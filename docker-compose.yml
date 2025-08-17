@@ -1,0 +1,45 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:15
+    container_name: crypto_postgres
+    environment:
+      POSTGRES_USER: crypto_user
+      POSTGRES_PASSWORD: crypto_pass
+      POSTGRES_DB: crypto_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - e:\data\var\lib\postgresql\data:/var/lib/postgresql/data
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: crypto_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    volumes:
+      - e:\data\var\lib\grafana:/var/lib/grafana
+
+  scanner:
+    build: ./scanner
+    container_name: crypto_scanner
+    depends_on:
+      - postgres
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=crypto_db
+      - DB_USER=crypto_user
+      - DB_PASS=crypto_pass
+      - TELEGRAM_TOKEN=YOUR_BOT_TOKEN
+      - CHAT_ID=YOUR_CHAT_ID
+      - THRESHOLD=3.0
+    volumes:
+      - ./scanner:/app
+    command: python scanner.py
+
+

@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "crypto-signals",
+    "title": "📊 Crypto Signals Dashboard",
+    "tags": ["crypto", "signals", "trading"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "table",
+        "title": "📈 Recent Signals",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
+        "datasource": {"type": "postgres"},
+        "targets": [
+          {
+            "format": "table",
+            "rawSql": "SELECT timestamp, symbol, signals, surge, rsi, macd, macd_signal, golden_cross FROM crypto_signals ORDER BY timestamp DESC LIMIT 50;",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
+        "options": {}
+      }
+    ]
+  },
+  "overwrite": true
+}

@@ -1,0 +1,7 @@
+ccxt
+pandas
+ta-lib
+requests
+mplfinance
+psycopg2-binary
+dotenv

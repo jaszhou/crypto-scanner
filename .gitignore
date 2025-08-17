@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pkl
+.env
+scanner/__pycache__/
+scanner/*.pyc
+scanner/temp_chart_*.png
+venv/
+scanner/venv/
+scanner/.env

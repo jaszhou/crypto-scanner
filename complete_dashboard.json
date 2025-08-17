@@ -1,0 +1,84 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "crypto-signals-complete",
+    "title": "📊 Crypto Signals Dashboard",
+    "tags": ["crypto", "signals", "trading"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "stat",
+        "title": "Total Signals",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "format": "table",
+            "rawSql": "SELECT COUNT(*) as count FROM crypto_signals;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "High Surge Signals",
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "format": "table",
+            "rawSql": "SELECT COUNT(*) as count FROM crypto_signals WHERE surge > 5.0;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "table",
+        "title": "📈 Recent Signals",
+        "gridPos": {"x": 0, "y": 4, "w": 24, "h": 8},
+        "targets": [
+          {
+            "format": "table",
+            "rawSql": "SELECT timestamp, symbol, signals, surge, rsi, return_24h FROM crypto_signals ORDER BY timestamp DESC LIMIT 20;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "barchart",
+        "title": "Top Symbols by Signal Count",
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+        "targets": [
+          {
+            "format": "table",
+            "rawSql": "SELECT symbol, COUNT(*) as count FROM crypto_signals GROUP BY symbol ORDER BY count DESC LIMIT 10;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "timeseries",
+        "title": "Signals Over Time",
+        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+        "targets": [
+          {
+            "format": "time_series",
+            "rawSql": "SELECT timestamp as time, COUNT(*) as signals FROM crypto_signals WHERE timestamp > NOW() - INTERVAL '24 hours' GROUP BY DATE_TRUNC('hour', timestamp) ORDER BY time;",
+            "refId": "A"
+          }
+        ]
+      }
+    ]
+  },
+  "overwrite": true
+}

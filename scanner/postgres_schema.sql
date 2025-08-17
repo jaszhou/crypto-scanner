@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS crypto_signals (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    surge FLOAT,
+    rsi FLOAT,
+    macd FLOAT,
+    macd_signal FLOAT,
+    golden_cross BOOLEAN,
+    signals TEXT,
+    close_price FLOAT,
+    llm_summary TEXT,
+    llm_risk TEXT,
+    future_6h FLOAT,
+    future_24h FLOAT,
+    return_6h FLOAT,
+    return_24h FLOAT
+);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_time ON crypto_signals(symbol, timestamp);
