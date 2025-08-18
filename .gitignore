@@ -8,3 +8,4 @@ scanner/temp_chart_*.png
 venv/
 scanner/venv/
 scanner/.env
+scanner/bot.md

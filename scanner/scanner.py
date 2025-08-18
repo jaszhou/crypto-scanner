@@ -114,7 +114,7 @@ def get_top_usdt_symbols(limit=100):
 
 # ------------------ MAIN SCAN ------------------
 def scan_symbols():
-    SYMBOLS = get_top_usdt_symbols(10)
+    SYMBOLS = get_top_usdt_symbols(100)
     alerts = []
     for sym in SYMBOLS:
         try:
@@ -147,10 +147,10 @@ if __name__ == "__main__":
         alerts = scan_symbols()
         for sym, signals, surge, rsi_val, macd_val, sig_val, golden_cross, df in alerts:
             msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
-            # send_telegram_text(msg)
-            # chart_path = plot_chart(df, sym)
-            # send_telegram_chart(chart_path, caption=f"{sym} Chart")
-            # os.remove(chart_path)
+            send_telegram_text(msg)
+            chart_path = plot_chart(df, sym)
+            send_telegram_chart(chart_path, caption=f"{sym} Chart")
+            os.remove(chart_path)
             close_price = df['close'].iloc[-1]
             save_to_postgres(sym, surge, rsi_val, macd_val, sig_val, golden_cross, signals, close_price)
         # Update future returns

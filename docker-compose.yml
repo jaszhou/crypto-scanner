@@ -25,6 +25,19 @@ services:
     volumes:
       - e:\data\var\lib\grafana:/var/lib/grafana
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: crypto_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - e:\data\var\lib\pgadmin:/var/lib/pgadmin
+
   scanner:
     build: ./scanner
     container_name: crypto_scanner
@@ -35,8 +48,8 @@ services:
       - DB_NAME=crypto_db
       - DB_USER=crypto_user
       - DB_PASS=crypto_pass
-      - TELEGRAM_TOKEN=YOUR_BOT_TOKEN
-      - CHAT_ID=YOUR_CHAT_ID
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - CHAT_ID=${CHAT_ID}
       - THRESHOLD=3.0
     volumes:
       - ./scanner:/app
