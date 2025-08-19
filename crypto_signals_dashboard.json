@@ -8,29 +8,71 @@
     "schemaVersion": 39,
     "version": 1,
     "refresh": "5m",
-    "time": {
-      "from": "now-24h",
-      "to": "now"
-    },
     "panels": [
       {
-        "id": 1,
         "type": "table",
         "title": "📈 Recent Signals",
         "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
-        "datasource": {"type": "postgres"},
+        "datasource": {"type": "postgres", "uid": "dev9on2tbtxxce"},
         "targets": [
           {
             "format": "table",
             "rawSql": "SELECT timestamp, symbol, signals, surge, rsi, macd, macd_signal, golden_cross FROM crypto_signals ORDER BY timestamp DESC LIMIT 50;",
             "refId": "A"
           }
-        ],
-        "fieldConfig": {
-          "defaults": {},
-          "overrides": []
-        },
-        "options": {}
+        ]
+      },
+      {
+        "type": "barchart",
+        "title": "🔥 Top 20 Coins by Signal Count",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "datasource": {"type": "postgres", "uid": "dev9on2tbtxxce"},
+        "targets": [
+          {
+            "format": "time_series",
+            "rawSql": "SELECT symbol, COUNT(*) AS signal_count FROM crypto_signals GROUP BY symbol ORDER BY signal_count DESC LIMIT 20;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "barchart",
+        "title": "📊 Avg 24h Return by Signal Type",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "datasource": {"type": "postgres", "uid": "dev9on2tbtxxce"},
+        "targets": [
+          {
+            "format": "time_series",
+            "rawSql": "SELECT CASE WHEN golden_cross = TRUE THEN 'Golden Cross' ELSE 'Other' END as signal_type, AVG(return_24h) as avg_return_24h FROM crypto_signals WHERE return_24h IS NOT NULL GROUP BY signal_type;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "timeseries",
+        "title": "⏱ Surge Over Time (BTC/USDT)",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "datasource": {"type": "postgres", "uid": "dev9on2tbtxxce"},
+        "targets": [
+          {
+            "format": "time_series",
+            "rawSql": "SELECT timestamp AS time, surge FROM crypto_signals WHERE symbol = 'BTC/USDT' ORDER BY time;",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "type": "barchart",
+        "title": "✅ Signal Success Rate (24h Win %)",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "datasource": {"type": "postgres", "uid": "dev9on2tbtxxce"},
+        "targets": [
+          {
+            "format": "time_series",
+            "rawSql": "SELECT signals, COUNT(*) FILTER (WHERE return_24h > 0) * 100.0 / COUNT(*) AS win_rate FROM crypto_signals WHERE return_24h IS NOT NULL GROUP BY signals ORDER BY win_rate DESC;",
+            "refId": "A"
+          }
+        ]
       }
     ]
   },

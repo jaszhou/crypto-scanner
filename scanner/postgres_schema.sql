@@ -18,3 +18,14 @@ CREATE TABLE IF NOT EXISTS crypto_signals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_symbol_time ON crypto_signals(symbol, timestamp);
+
+CREATE TABLE IF NOT EXISTS positions (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20),
+    side VARCHAR(4),          -- buy or sell
+    entry_price FLOAT,
+    last_price FLOAT,
+    amount FLOAT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(10) DEFAULT 'open'
+);

@@ -24,6 +24,69 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 THRESHOLD = float(os.getenv("THRESHOLD", "3.0"))
 
+# import os
+# import ccxt
+# import psycopg2
+
+TRADING_MODE = os.environ.get("TRADING_MODE", "paper")
+TRADE_AMOUNT_USD = float(os.environ.get("TRADE_AMOUNT_USD", 50))
+
+# Initialize exchange for live trading
+exchange_live = None
+if TRADING_MODE == "live":
+    exchange_live = ccxt.binance({
+        "apiKey": os.environ.get("BINANCE_API_KEY"),
+        "secret": os.environ.get("BINANCE_SECRET_KEY"),
+        "enableRateLimit": True,
+    })
+
+# Function to place order
+def place_order(symbol, side, amount):
+    if TRADING_MODE == "paper":
+        print(f"📄 Paper trade: {side} {amount:.6f} {symbol}")
+        save_position(symbol, side, amount, 0)  # entry_price=0 for paper
+        return {"status": "paper"}
+    else:
+        try:
+            order = exchange_live.create_market_order(symbol, side, amount)
+            entry_price = float(order['fills'][0]['price'])
+            save_position(symbol, side, amount, entry_price)
+            print(f"✅ Live trade executed: {side} {amount:.6f} {symbol} at {entry_price}")
+            return order
+        except Exception as e:
+            print(f"❌ Trade failed: {e}")
+            return None
+
+# Save position to Postgres
+def save_position(symbol, side, amount, entry_price):
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO positions (symbol, side, entry_price, amount)
+            VALUES (%s, %s, %s, %s)
+        """, (symbol, side, entry_price, amount))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Position DB error: {e}")
+
+# Check open positions for exit rules
+def get_open_positions():
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT id, symbol, side, entry_price, amount FROM positions WHERE status='open'")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        print(f"❌ Failed to fetch positions: {e}")
+        return []
+
+
 exchange = ccxt.binance()
 
 # ------------------ TELEGRAM ------------------
@@ -104,7 +167,7 @@ def plot_chart(df, symbol):
              title=f"{symbol} - Last 80 Hours", mav=(9,21,50), savefig=temp_file.name)
     return temp_file.name
 
-def get_top_usdt_symbols(limit=100):
+def get_top_usdt_symbols(limit=50):
     exchange.load_markets()
     usdt_pairs = [s for s in exchange.symbols if s.endswith("/USDT")]
     tickers = exchange.fetch_tickers()
@@ -129,7 +192,7 @@ def scan_symbols():
             triggered = []
             if surge >= THRESHOLD:
                 triggered.append(f"🚀 Surge +{surge:.2f}%")
-            if rsi_val > 55:
+            if rsi_val > 55: 
                 triggered.append(f"RSI {rsi_val:.1f}")
             if macd_val > sig_val:
                 triggered.append("MACD Bullish")
@@ -143,17 +206,63 @@ def scan_symbols():
 
 # ------------------ RUN LOOP ------------------
 if __name__ == "__main__":
+
+    # Print .env file variables
+    print("=== .env Variables ===")
+    env_vars = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS', 'TELEGRAM_TOKEN', 'CHAT_ID', 'THRESHOLD']
+    for var in env_vars:
+        value = os.getenv(var, 'NOT SET')
+        print(f"{var}={value}")
+    print("=====================")
+
     while True:
         alerts = scan_symbols()
+
         for sym, signals, surge, rsi_val, macd_val, sig_val, golden_cross, df in alerts:
-            msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
-            send_telegram_text(msg)
-            chart_path = plot_chart(df, sym)
-            send_telegram_chart(chart_path, caption=f"{sym} Chart")
-            os.remove(chart_path)
+            
             close_price = df['close'].iloc[-1]
             save_to_postgres(sym, surge, rsi_val, macd_val, sig_val, golden_cross, signals, close_price)
+
+            # Strong signals only
+            if len(signals) >= 2 and surge >= THRESHOLD:
+
+                msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
+                send_telegram_text(msg)
+                chart_path = plot_chart(df, sym)
+                send_telegram_chart(chart_path, caption=f"{sym} Chart")
+                # os.remove(chart_path)
+
+                # Determine trade amount in base currency
+                ticker = exchange.fetch_ticker(sym)
+                price = ticker['last']
+                amount = TRADE_AMOUNT_USD / price
+
+                # Place buy order
+                place_order(sym, "buy", amount)
+        
         # Update future returns
         update_future_returns()
+
+        # Check for exit conditions
+        positions = get_open_positions()
+        for pos_id, sym, side, entry_price, amount in positions:
+            ticker = exchange.fetch_ticker(sym)
+            last_price = ticker['last']
+            profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
+            # Example exit: +2% profit or -1% loss
+            if profit_pct >= 2 or profit_pct <= -1:
+                place_order(sym, "sell", amount)
+                # Update status in DB
+                try:
+                    conn = psycopg2.connect(**DB_CONFIG)
+                    cur = conn.cursor()
+                    cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"❌ Failed to close position: {e}")
+
+
         # Wait 10 minutes before next scan
-        time.sleep(600)
+        time.sleep(300)
