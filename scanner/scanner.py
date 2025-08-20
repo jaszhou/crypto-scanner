@@ -42,29 +42,36 @@ if TRADING_MODE == "live":
 
 # Function to place order
 def place_order(symbol, side, amount):
-    if TRADING_MODE == "paper":
-        ticker = exchange.fetch_ticker(symbol)
-        price = ticker['last']
-        print(f"📄 Paper trade: {side} {amount:.6f} {symbol} at {price}")
-        if side == "sell":
-            # Update position with exit price
-            update_position_exit(symbol, price)
+    start_time = time.time()
+    print(f"🔧 DEBUG: place_order called with symbol={symbol}, side={side}, amount={amount}")
+    try:
+        if TRADING_MODE == "paper":
+            ticker = exchange.fetch_ticker(symbol)
+            price = ticker['last']
+            print(f"📄 Paper trade: {side} {amount:.6f} {symbol} at {price}")
+            if side == "sell":
+                # Update position with exit price
+                update_position_exit(symbol, price)
+            else:
+                save_position(symbol, side, amount, price)
+            return {"status": "paper"}
         else:
-            save_position(symbol, side, amount, price)
-        return {"status": "paper"}
-    else:
-        try:
-            order = exchange_live.create_market_order(symbol, side, amount)
-            entry_price = float(order['fills'][0]['price'])
-            save_position(symbol, side, amount, entry_price)
-            print(f"✅ Live trade executed: {side} {amount:.6f} {symbol} at {entry_price}")
-            return order
-        except Exception as e:
-            print(f"❌ Trade failed: {e}")
-            return None
+            try:
+                order = exchange_live.create_market_order(symbol, side, amount)
+                entry_price = float(order['fills'][0]['price'])
+                save_position(symbol, side, amount, entry_price)
+                print(f"✅ Live trade executed: {side} {amount:.6f} {symbol} at {entry_price}")
+                return order
+            except Exception as e:
+                print(f"❌ Trade failed: {e}")
+                return None
+    finally:
+        print(f"⏱️ place_order took {time.time() - start_time:.3f}s")
 
 # Save position to Postgres
 def save_position(symbol, side, amount, entry_price):
+    start_time = time.time()
+    print(f"🔧 DEBUG: save_position called with symbol={symbol}, side={side}, amount={amount}, entry_price={entry_price}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -77,9 +84,13 @@ def save_position(symbol, side, amount, entry_price):
         conn.close()
     except Exception as e:
         print(f"❌ Position DB error: {e}")
+    finally:
+        print(f"⏱️ save_position took {time.time() - start_time:.3f}s")
 
 # Update position with exit price for paper trading
 def update_position_exit(symbol, exit_price):
+    start_time = time.time()
+    print(f"🔧 DEBUG: update_position_exit called with symbol={symbol}, exit_price={exit_price}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -92,9 +103,13 @@ def update_position_exit(symbol, exit_price):
         conn.close()
     except Exception as e:
         print(f"❌ Position exit update error: {e}")
+    finally:
+        print(f"⏱️ update_position_exit took {time.time() - start_time:.3f}s")
 
 # Check open positions for exit rules
 def get_open_positions():
+    start_time = time.time()
+    print(f"🔧 DEBUG: get_open_positions called")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -106,24 +121,34 @@ def get_open_positions():
     except Exception as e:
         print(f"❌ Failed to fetch positions: {e}")
         return []
+    finally:
+        print(f"⏱️ get_open_positions took {time.time() - start_time:.3f}s")
 
 
 exchange = ccxt.binance()
 
 # ------------------ TELEGRAM ------------------
 def send_telegram_text(msg):
+    start_time = time.time()
+    print(f"🔧 DEBUG: send_telegram_text called with msg length={len(msg)}")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    print(f"⏱️ send_telegram_text took {time.time() - start_time:.3f}s")
 
 def send_telegram_chart(image_path, caption=""):
+    start_time = time.time()
+    print(f"🔧 DEBUG: send_telegram_chart called with image_path={image_path}, caption={caption}")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     with open(image_path, "rb") as img:
         files = {"photo": img}
         data = {"chat_id": CHAT_ID, "caption": caption}
         requests.post(url, files=files, data=data)
+    print(f"⏱️ send_telegram_chart took {time.time() - start_time:.3f}s")
 
 # ------------------ DATABASE ------------------
 def save_to_postgres(symbol, surge, rsi, macd, sig, golden_cross, signals, close_price):
+    start_time = time.time()
+    print(f"🔧 DEBUG: save_to_postgres called with symbol={symbol}, surge={surge}, signals={signals}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -137,8 +162,12 @@ def save_to_postgres(symbol, surge, rsi, macd, sig, golden_cross, signals, close
         conn.close()
     except Exception as e:
         print(f"❌ DB Error for {symbol}: {e}")
+    finally:
+        print(f"⏱️ save_to_postgres took {time.time() - start_time:.3f}s")
 
 def update_future_returns():
+    start_time = time.time()
+    print(f"🔧 DEBUG: update_future_returns called")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -169,6 +198,8 @@ def update_future_returns():
         conn.close()
     except Exception as e:
         print(f"❌ Future return update error: {e}")
+    finally:
+        print(f"⏱️ update_future_returns took {time.time() - start_time:.3f}s")
 
 # ------------------ UTILS ------------------
 def percent_change(open_price, close_price):
@@ -189,15 +220,20 @@ def plot_chart(df, symbol):
     return temp_file.name
 
 def get_top_usdt_symbols(limit=50):
+    start_time = time.time()
+    print(f"🔧 DEBUG: get_top_usdt_symbols called with limit={limit}")
     exchange.load_markets()
     usdt_pairs = [s for s in exchange.symbols if s.endswith("/USDT")]
     tickers = exchange.fetch_tickers()
     volume_data = [(s, tickers[s]["quoteVolume"]) for s in usdt_pairs if s in tickers and "quoteVolume" in tickers[s]]
     top_symbols = sorted(volume_data, key=lambda x: x[1], reverse=True)[:limit]
+    print(f"⏱️ get_top_usdt_symbols took {time.time() - start_time:.3f}s")
     return [s[0] for s in top_symbols]
 
 # ------------------ MAIN SCAN ------------------
 def scan_symbols():
+    start_time = time.time()
+    print(f"🔧 DEBUG: scan_symbols called")
     SYMBOLS = get_top_usdt_symbols(10)
     alerts = []
     for sym in SYMBOLS:
@@ -223,6 +259,7 @@ def scan_symbols():
                 alerts.append((sym, triggered, surge, rsi_val, macd_val, sig_val, golden_cross, df))
         except Exception:
             continue
+    print(f"⏱️ scan_symbols took {time.time() - start_time:.3f}s")
     return alerts
 
 # ------------------ RUN LOOP ------------------
@@ -236,6 +273,7 @@ if __name__ == "__main__":
         print(f"{var}={value}")
     print("=====================")
 
+    last_future_update = 0
     while True:
         alerts = scan_symbols()
 
@@ -263,8 +301,11 @@ if __name__ == "__main__":
                 # Place buy order
                 place_order(sym, "buy", amount)
         
-        # Update future returns
-        update_future_returns()
+        # Update future returns hourly
+        current_time = time.time()
+        if current_time - last_future_update >= 3600:  # 3600 seconds = 1 hour
+            update_future_returns()
+            last_future_update = current_time
 
         # Check for exit conditions
         positions = get_open_positions()
@@ -288,5 +329,5 @@ if __name__ == "__main__":
 
 
         # Wait 10 minutes before next scan
-        print(f"⏳ Waiting 60 seconds...")
-        time.sleep(60)
+        print(f"⏳ Waiting 300 seconds...")
+        time.sleep(300)
