@@ -22,7 +22,7 @@ DB_CONFIG = {
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-THRESHOLD = float(os.getenv("THRESHOLD", "3.0"))
+THRESHOLD = float(os.getenv("THRESHOLD", "1.0"))
 
 # import os
 # import ccxt
@@ -43,8 +43,14 @@ if TRADING_MODE == "live":
 # Function to place order
 def place_order(symbol, side, amount):
     if TRADING_MODE == "paper":
-        print(f"📄 Paper trade: {side} {amount:.6f} {symbol}")
-        save_position(symbol, side, amount, 0)  # entry_price=0 for paper
+        ticker = exchange.fetch_ticker(symbol)
+        price = ticker['last']
+        print(f"📄 Paper trade: {side} {amount:.6f} {symbol} at {price}")
+        if side == "sell":
+            # Update position with exit price
+            update_position_exit(symbol, price)
+        else:
+            save_position(symbol, side, amount, price)
         return {"status": "paper"}
     else:
         try:
@@ -71,6 +77,21 @@ def save_position(symbol, side, amount, entry_price):
         conn.close()
     except Exception as e:
         print(f"❌ Position DB error: {e}")
+
+# Update position with exit price for paper trading
+def update_position_exit(symbol, exit_price):
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE positions SET last_price=%s, status='closed' 
+            WHERE symbol=%s AND status='open'
+        """, (exit_price, symbol))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Position exit update error: {e}")
 
 # Check open positions for exit rules
 def get_open_positions():
@@ -177,7 +198,7 @@ def get_top_usdt_symbols(limit=50):
 
 # ------------------ MAIN SCAN ------------------
 def scan_symbols():
-    SYMBOLS = get_top_usdt_symbols(100)
+    SYMBOLS = get_top_usdt_symbols(10)
     alerts = []
     for sym in SYMBOLS:
         try:
@@ -226,6 +247,8 @@ if __name__ == "__main__":
             # Strong signals only
             if len(signals) >= 2 and surge >= THRESHOLD:
 
+                print(f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%")
+
                 msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
                 send_telegram_text(msg)
                 chart_path = plot_chart(df, sym)
@@ -250,7 +273,7 @@ if __name__ == "__main__":
             last_price = ticker['last']
             profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
             # Example exit: +2% profit or -1% loss
-            if profit_pct >= 2 or profit_pct <= -1:
+            if profit_pct >= 0.1 or profit_pct <= -1:
                 place_order(sym, "sell", amount)
                 # Update status in DB
                 try:
@@ -265,4 +288,5 @@ if __name__ == "__main__":
 
 
         # Wait 10 minutes before next scan
-        time.sleep(300)
+        print(f"⏳ Waiting 60 seconds...")
+        time.sleep(60)

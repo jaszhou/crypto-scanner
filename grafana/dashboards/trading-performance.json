@@ -1,0 +1,302 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Crypto Trading Performance",
+    "tags": ["crypto", "trading", "performance"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total Trades",
+        "type": "stat",
+        "targets": [
+          {
+            "rawSql": "SELECT COUNT(*) as total_trades FROM positions WHERE status='closed'",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Win Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "rawSql": "SELECT (COUNT(CASE WHEN (last_price - entry_price) * amount > 0 THEN 1 END) * 100.0 / COUNT(*)) as win_rate FROM positions WHERE status='closed'",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 40},
+                {"color": "green", "value": 60}
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "Total PnL",
+        "type": "stat",
+        "targets": [
+          {
+            "rawSql": "SELECT SUM((last_price - entry_price) * amount) as total_pnl FROM positions WHERE status='closed'",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0},
+                {"color": "green", "value": 100}
+              ]
+            },
+            "unit": "currencyUSD"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 4,
+        "title": "Average Return",
+        "type": "stat",
+        "targets": [
+          {
+            "rawSql": "SELECT AVG(((last_price - entry_price) / entry_price) * 100) as avg_return FROM positions WHERE status='closed'",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0},
+                {"color": "green", "value": 2}
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        }
+      },
+      {
+        "id": 5,
+        "title": "Cumulative PnL Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "rawSql": "SELECT timestamp, SUM((last_price - entry_price) * amount) OVER (ORDER BY timestamp) as cumulative_pnl FROM positions WHERE status='closed' ORDER BY timestamp",
+            "refId": "A",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 10
+            },
+            "unit": "currencyUSD"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        }
+      },
+      {
+        "id": 6,
+        "title": "Trade Return Distribution",
+        "type": "histogram",
+        "targets": [
+          {
+            "rawSql": "SELECT ((last_price - entry_price) / entry_price) * 100 as percent_return FROM positions WHERE status='closed'",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        }
+      },
+      {
+        "id": 7,
+        "title": "Recent Trades",
+        "type": "table",
+        "targets": [
+          {
+            "rawSql": "SELECT symbol, side, entry_price, last_price, amount, ((last_price - entry_price) / entry_price) * 100 as return_pct, (last_price - entry_price) * amount as pnl, timestamp FROM positions WHERE status='closed' ORDER BY timestamp DESC LIMIT 20",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "return_pct"},
+              "properties": [
+                {"id": "unit", "value": "percent"},
+                {"id": "custom.displayMode", "value": "color-background"},
+                {"id": "thresholds", "value": {
+                  "steps": [
+                    {"color": "red", "value": null},
+                    {"color": "yellow", "value": 0},
+                    {"color": "green", "value": 2}
+                  ]
+                }}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "pnl"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"},
+                {"id": "custom.displayMode", "value": "color-background"},
+                {"id": "thresholds", "value": {
+                  "steps": [
+                    {"color": "red", "value": null},
+                    {"color": "yellow", "value": 0},
+                    {"color": "green", "value": 10}
+                  ]
+                }}
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 12
+        }
+      },
+      {
+        "id": 8,
+        "title": "Performance by Symbol",
+        "type": "barchart",
+        "targets": [
+          {
+            "rawSql": "SELECT symbol, SUM((last_price - entry_price) * amount) as total_pnl FROM positions WHERE status='closed' GROUP BY symbol ORDER BY total_pnl DESC",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        }
+      },
+      {
+        "id": 9,
+        "title": "Daily PnL",
+        "type": "timeseries",
+        "targets": [
+          {
+            "rawSql": "SELECT DATE(timestamp) as time, SUM((last_price - entry_price) * amount) as daily_pnl FROM positions WHERE status='closed' GROUP BY DATE(timestamp) ORDER BY time",
+            "refId": "A",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "bars",
+              "fillOpacity": 80
+            },
+            "unit": "currencyUSD",
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0},
+                {"color": "green", "value": 50}
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 20
+        }
+      }
+    ],
+    "time": {
+      "from": "now-30d",
+      "to": "now"
+    },
+    "refresh": "5m",
+    "schemaVersion": 30,
+    "version": 1,
+    "uid": "crypto-trading-performance"
+  }
+}
