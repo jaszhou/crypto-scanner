@@ -67,6 +67,20 @@ def place_order(symbol, side, amount):
                 return None
     finally:
         print(f"⏱️ place_order took {time.time() - start_time:.3f}s")
+        msg = f"📊 {symbol}\nSelling..."
+        send_telegram_text(msg)
+        # chart_path = plot_chart(df, sym)
+        # send_telegram_chart(chart_path, caption=f"{sym} Chart")
+        # Update status in DB
+        try:
+            conn = psycopg2.connect(**DB_CONFIG)
+            cur = conn.cursor()
+            cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"❌ Failed to close position: {e}")
 
 # Save position to Postgres
 def save_position(symbol, side, amount, entry_price):
@@ -95,7 +109,7 @@ def update_position_exit(symbol, exit_price):
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         cur.execute("""
-            UPDATE positions SET last_price=%s, status='closed' 
+            UPDATE positions SET last_price=%s, side='sale', status='closed' 
             WHERE symbol=%s AND status='open'
         """, (exit_price, symbol))
         conn.commit()
@@ -148,7 +162,7 @@ def send_telegram_chart(image_path, caption=""):
 # ------------------ DATABASE ------------------
 def save_to_postgres(symbol, surge, rsi, macd, sig, golden_cross, signals, close_price):
     start_time = time.time()
-    print(f"🔧 DEBUG: save_to_postgres called with symbol={symbol}, surge={surge}, signals={signals}")
+    # print(f"🔧 DEBUG: save_to_postgres called with symbol={symbol}, surge={surge}, signals={signals}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -262,6 +276,38 @@ def scan_symbols():
     print(f"⏱️ scan_symbols took {time.time() - start_time:.3f}s")
     return alerts
 
+def check_exit_signals(df, entry_price, last_price, sym, amount):
+    signals = []
+
+    # --- Risk Management: Stop Loss ---
+    profit_pct = (last_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+    if profit_pct <= -5:  # hard stop-loss at -5%
+        signals.append("Stop Loss Hit (-5%)")
+        place_order(sym, "sell", amount)
+        return signals
+
+    # --- Technical Selling Signals ---
+    if df['ema50'].iloc[-1] < df['ema200'].iloc[-1] and df['ema50'].iloc[-2] >= df['ema200'].iloc[-2]:
+        signals.append("Death Cross (SELL)")
+    if df['rsi'].iloc[-1] > 70 and df['rsi'].iloc[-1] < df['rsi'].iloc[-2]:
+        signals.append("RSI Overbought (SELL)")
+    if df['macd'].iloc[-1] < df['signal'].iloc[-1] and df['macd'].iloc[-2] >= df['signal'].iloc[-2]:
+        signals.append("MACD Bearish Crossover (SELL)")
+
+    # --- Trailing Stop to lock in profits ---
+    trailing_stop_pct = 3  # e.g. 3% drop from highest close since entry
+    df['rolling_max'] = df['close'].cummax()
+    recent_high = df['rolling_max'].iloc[-1]
+    if last_price < recent_high * (1 - trailing_stop_pct / 100):
+        signals.append("Trailing Stop Triggered (SELL)")
+
+    # --- Place order if any exit condition is met ---
+    if signals:
+        place_order(sym, "sell", amount)
+
+    return signals
+
+
 # ------------------ RUN LOOP ------------------
 if __name__ == "__main__":
 
@@ -287,7 +333,7 @@ if __name__ == "__main__":
 
                 print(f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%")
 
-                msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
+                msg = f"📊 {sym}\nBuying... Signals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
                 send_telegram_text(msg)
                 chart_path = plot_chart(df, sym)
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
@@ -313,19 +359,28 @@ if __name__ == "__main__":
             ticker = exchange.fetch_ticker(sym)
             last_price = ticker['last']
             profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
+
+            
+            print(f"🔍 Checking exit for {sym}: Entry={entry_price}, Last={last_price}, Profit={profit_pct:.2f}%")
+            check_exit_signals(df, entry_price, last_price, sym, amount)
+
             # Example exit: +2% profit or -1% loss
-            if profit_pct >= 0.1 or profit_pct <= -1:
-                place_order(sym, "sell", amount)
-                # Update status in DB
-                try:
-                    conn = psycopg2.connect(**DB_CONFIG)
-                    cur = conn.cursor()
-                    cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                except Exception as e:
-                    print(f"❌ Failed to close position: {e}")
+            # if profit_pct >= 5 or profit_pct <= -5:
+            #     place_order(sym, "sell", amount)
+            #     msg = f"📊 {sym}\nSelling..."
+            #     send_telegram_text(msg)
+            #     # chart_path = plot_chart(df, sym)
+            #     # send_telegram_chart(chart_path, caption=f"{sym} Chart")
+            #     # Update status in DB
+            #     try:
+            #         conn = psycopg2.connect(**DB_CONFIG)
+            #         cur = conn.cursor()
+            #         cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
+            #         conn.commit()
+            #         cur.close()
+            #         conn.close()
+            #     except Exception as e:
+            #         print(f"❌ Failed to close position: {e}")
 
 
         # Wait 10 minutes before next scan
