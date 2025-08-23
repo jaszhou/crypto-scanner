@@ -8,6 +8,7 @@ import os
 import psycopg2
 import time
 from dotenv import load_dotenv
+from market import get_market_indicator
 
 load_dotenv()  # Loads .env file
 
@@ -67,7 +68,7 @@ def place_order(symbol, side, amount):
                 return None
     finally:
         print(f"⏱️ place_order took {time.time() - start_time:.3f}s")
-        msg = f"📊 {symbol}\nSelling..."
+        msg = f"📊 {symbol}\n {side}"
         send_telegram_text(msg)
         # chart_path = plot_chart(df, sym)
         # send_telegram_chart(chart_path, caption=f"{sym} Chart")
@@ -138,6 +139,23 @@ def get_open_positions():
     finally:
         print(f"⏱️ get_open_positions took {time.time() - start_time:.3f}s")
 
+def has_open_position(symbol):
+    start_time = time.time()
+    print(f"🔧 DEBUG: has_open_position called with symbol={symbol}")
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM positions WHERE symbol=%s AND status='open'", (symbol,))
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"❌ Failed to check position for {symbol}: {e}")
+        return False
+    finally:
+        print(f"⏱️ has_open_position took {time.time() - start_time:.3f}s")
+
 
 exchange = ccxt.binance()
 
@@ -176,8 +194,8 @@ def save_to_postgres(symbol, surge, rsi, macd, sig, golden_cross, signals, close
         conn.close()
     except Exception as e:
         print(f"❌ DB Error for {symbol}: {e}")
-    finally:
-        print(f"⏱️ save_to_postgres took {time.time() - start_time:.3f}s")
+    # finally:
+    #     print(f"⏱️ save_to_postgres took {time.time() - start_time:.3f}s")
 
 def update_future_returns():
     start_time = time.time()
@@ -276,8 +294,32 @@ def scan_symbols():
     print(f"⏱️ scan_symbols took {time.time() - start_time:.3f}s")
     return alerts
 
+def add_indicators(df):
+    # EMA50 / EMA200
+    df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
+    df['ema200'] = df['close'].ewm(span=200, adjust=False).mean()
+
+    # RSI
+    delta = df['close'].diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window=14, min_periods=14).mean()
+    avg_loss = loss.rolling(window=14, min_periods=14).mean()
+    rs = avg_gain / avg_loss
+    df['rsi'] = 100 - (100 / (1 + rs))
+
+    # MACD & Signal
+    ema12 = df['close'].ewm(span=12, adjust=False).mean()
+    ema26 = df['close'].ewm(span=26, adjust=False).mean()
+    df['macd'] = ema12 - ema26
+    df['signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+
+    return df
+
 def check_exit_signals(df, entry_price, last_price, sym, amount):
     signals = []
+     # Add indicators
+    df = add_indicators(df)
 
     # --- Risk Management: Stop Loss ---
     profit_pct = (last_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
@@ -329,7 +371,11 @@ if __name__ == "__main__":
             save_to_postgres(sym, surge, rsi_val, macd_val, sig_val, golden_cross, signals, close_price)
 
             # Strong signals only
-            if len(signals) >= 2 and surge >= THRESHOLD:
+            if len(signals) >= 2 and surge >= THRESHOLD and get_market_indicator():
+                # Check if already holding position
+                if has_open_position(sym):
+                    print(f"⚠️ Already holding position for {sym}, skipping buy signal")
+                    continue
 
                 print(f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%")
 
@@ -348,21 +394,43 @@ if __name__ == "__main__":
                 place_order(sym, "buy", amount)
         
         # Update future returns hourly
-        current_time = time.time()
-        if current_time - last_future_update >= 3600:  # 3600 seconds = 1 hour
-            update_future_returns()
-            last_future_update = current_time
+        # current_time = time.time()
+        # if current_time - last_future_update >= 3600:  # 3600 seconds = 1 hour
+        #     update_future_returns()
+        #     last_future_update = current_time
 
         # Check for exit conditions
         positions = get_open_positions()
         for pos_id, sym, side, entry_price, amount in positions:
+            # Check minimum hold time (5 minutes)
+            try:
+                conn = psycopg2.connect(**DB_CONFIG)
+                cur = conn.cursor()
+                cur.execute("SELECT timestamp FROM positions WHERE id=%s", (pos_id,))
+                entry_time = cur.fetchone()[0]
+                cur.close()
+                conn.close()
+                
+                time_held = (time.time() - entry_time.timestamp()) / 60  # minutes
+                if time_held < 5:
+                    print(f"⏰ {sym} held for {time_held:.1f}min, minimum 5min required")
+                    continue
+            except Exception as e:
+                print(f"❌ Error checking hold time for {sym}: {e}")
+                continue
+                
             ticker = exchange.fetch_ticker(sym)
             last_price = ticker['last']
             profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
 
-            
             print(f"🔍 Checking exit for {sym}: Entry={entry_price}, Last={last_price}, Profit={profit_pct:.2f}%")
-            check_exit_signals(df, entry_price, last_price, sym, amount)
+            signals = check_exit_signals(df, entry_price, last_price, sym, amount)
+            if signals:
+                msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nSelling..."
+                send_telegram_text(msg)
+                chart_path = plot_chart(df, sym)    
+                send_telegram_chart(chart_path, caption=f"{sym} Chart")
+
 
             # Example exit: +2% profit or -1% loss
             # if profit_pct >= 5 or profit_pct <= -5:
