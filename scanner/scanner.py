@@ -9,7 +9,7 @@ import psycopg2
 import time
 from dotenv import load_dotenv
 from market import get_market_indicator
-
+from get_list import *
 load_dotenv()  # Loads .env file
 
 # ------------------ CONFIG ------------------
@@ -263,10 +263,10 @@ def get_top_usdt_symbols(limit=50):
     return [s[0] for s in top_symbols]
 
 # ------------------ MAIN SCAN ------------------
-def scan_symbols():
+def scan_symbols(num_symbols=10):
     start_time = time.time()
     print(f"🔧 DEBUG: scan_symbols called")
-    SYMBOLS = get_top_usdt_symbols(10)
+    SYMBOLS = get_top_usdt_symbols(num_symbols)
     alerts = []
     for sym in SYMBOLS:
         try:
@@ -362,8 +362,8 @@ if __name__ == "__main__":
     print("=====================")
 
     last_future_update = 0
-    while True:
-        alerts = scan_symbols()
+    while get_USDT_balance() > 10:  # Ensure minimum balance to trade
+        alerts = scan_symbols(num_symbols=10)
 
         for sym, signals, surge, rsi_val, macd_val, sig_val, golden_cross, df in alerts:
             
