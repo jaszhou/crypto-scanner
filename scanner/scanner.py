@@ -73,15 +73,15 @@ def place_order(symbol, side, amount):
         # chart_path = plot_chart(df, sym)
         # send_telegram_chart(chart_path, caption=f"{sym} Chart")
         # Update status in DB
-        try:
-            conn = psycopg2.connect(**DB_CONFIG)
-            cur = conn.cursor()
-            cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
-            conn.commit()
-            cur.close()
-            conn.close()
-        except Exception as e:
-            print(f"❌ Failed to close position: {e}")
+        # try:
+        #     conn = psycopg2.connect(**DB_CONFIG)
+        #     cur = conn.cursor()
+        #     cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
+        #     conn.commit()
+        #     cur.close()
+        #     conn.close()
+        # except Exception as e:
+        #     print(f"❌ Failed to close position: {e}")
 
 # Save position to Postgres
 def save_position(symbol, side, amount, entry_price):
@@ -316,17 +316,17 @@ def add_indicators(df):
 
     return df
 
-def check_exit_signals(df, entry_price, last_price, sym, amount):
+def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
     signals = []
-     # Add indicators
     df = add_indicators(df)
 
     # --- Risk Management: Stop Loss ---
     profit_pct = (last_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
-    if profit_pct <= -5:  # hard stop-loss at -5%
+    if profit_pct <= -5:
         signals.append("Stop Loss Hit (-5%)")
-        place_order(sym, "sell", amount)
-        return signals
+
+    if profit_pct > 10:
+        signals.append("Profit Hit (10%)")
 
     # --- Technical Selling Signals ---
     if df['ema50'].iloc[-1] < df['ema200'].iloc[-1] and df['ema50'].iloc[-2] >= df['ema200'].iloc[-2]:
@@ -336,10 +336,11 @@ def check_exit_signals(df, entry_price, last_price, sym, amount):
     if df['macd'].iloc[-1] < df['signal'].iloc[-1] and df['macd'].iloc[-2] >= df['signal'].iloc[-2]:
         signals.append("MACD Bearish Crossover (SELL)")
 
-    # --- Trailing Stop to lock in profits ---
-    trailing_stop_pct = 3  # e.g. 3% drop from highest close since entry
-    df['rolling_max'] = df['close'].cummax()
-    recent_high = df['rolling_max'].iloc[-1]
+    # --- Trailing Stop: Use max of last 5 close prices ---
+    recent_high = df['close'].tail(5).max()
+    
+    trailing_stop_pct = 10
+    print(f"🔍 {sym} max of last 5 closes: {recent_high}, last price: {last_price}")
     if last_price < recent_high * (1 - trailing_stop_pct / 100):
         signals.append("Trailing Stop Triggered (SELL)")
 
@@ -371,7 +372,8 @@ if __name__ == "__main__":
             save_to_postgres(sym, surge, rsi_val, macd_val, sig_val, golden_cross, signals, close_price)
 
             # Strong signals only
-            if len(signals) >= 2 and surge >= THRESHOLD and get_market_indicator():
+            # if len(signals) >= 2 and surge >= THRESHOLD and get_market_indicator():
+            if len(signals) >= 2 and surge >= THRESHOLD:
                 # Check if already holding position
                 if has_open_position(sym):
                     print(f"⚠️ Already holding position for {sym}, skipping buy signal")
@@ -379,7 +381,7 @@ if __name__ == "__main__":
 
                 print(f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%")
 
-                msg = f"📊 {sym}\nBuying... Signals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
+                msg = f"📊 {sym}\nBuying..price: {close_price}. Signals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
                 send_telegram_text(msg)
                 chart_path = plot_chart(df, sym)
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
@@ -403,30 +405,38 @@ if __name__ == "__main__":
         positions = get_open_positions()
         for pos_id, sym, side, entry_price, amount in positions:
             # Check minimum hold time (5 minutes)
+            # try:
+            #     conn = psycopg2.connect(**DB_CONFIG)
+            #     cur = conn.cursor()
+            #     cur.execute("SELECT timestamp FROM positions WHERE id=%s", (pos_id,))
+            #     entry_time = cur.fetchone()[0]
+            #     cur.close()
+            #     conn.close()
+                
+            #     # time_held = (time.time() - entry_time.timestamp()) / 60  # minutes
+            #     # print(f"⏰ {sym} held for {time_held:.1f}min, minimum 5min required")
+            #     # if time_held < 5:
+            #     #     print(f"⏰ {sym} held for {time_held:.1f}min, minimum 5min required")
+            #     #     continue
+            # except Exception as e:
+            #     print(f"❌ Error checking hold time for {sym}: {e}")
+            #     continue
+                
+            # Get fresh data for exit analysis
             try:
-                conn = psycopg2.connect(**DB_CONFIG)
-                cur = conn.cursor()
-                cur.execute("SELECT timestamp FROM positions WHERE id=%s", (pos_id,))
-                entry_time = cur.fetchone()[0]
-                cur.close()
-                conn.close()
-                
-                time_held = (time.time() - entry_time.timestamp()) / 60  # minutes
-                if time_held < 5:
-                    print(f"⏰ {sym} held for {time_held:.1f}min, minimum 5min required")
-                    continue
-            except Exception as e:
-                print(f"❌ Error checking hold time for {sym}: {e}")
-                continue
-                
-            ticker = exchange.fetch_ticker(sym)
-            last_price = ticker['last']
-            profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
+                ohlcv = exchange.fetch_ohlcv(sym, '1h', limit=50)
+                df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
+                ticker = exchange.fetch_ticker(sym)
+                last_price = ticker['last']
+                profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
 
-            print(f"🔍 Checking exit for {sym}: Entry={entry_price}, Last={last_price}, Profit={profit_pct:.2f}%")
-            signals = check_exit_signals(df, entry_price, last_price, sym, amount)
+                print(f"🔍 Checking exit for {sym}: Entry={entry_price}, Last={last_price}, Profit={profit_pct:.2f}%")
+                signals = check_exit_signals(df, entry_price, last_price, sym, amount, entry_time=None)
+            except Exception as e:
+                print(f"❌ Error getting data for {sym}: {e}")
+                continue
             if signals:
-                msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nSelling..."
+                msg = f"📊 {sym}\nSignals: {', '.join(signals)}\nSelling... Entry={entry_price}, Last={last_price}, Profit={profit_pct:.2f}%" 
                 send_telegram_text(msg)
                 chart_path = plot_chart(df, sym)    
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
