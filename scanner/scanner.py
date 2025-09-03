@@ -372,8 +372,8 @@ if __name__ == "__main__":
             save_to_postgres(sym, surge, rsi_val, macd_val, sig_val, golden_cross, signals, close_price)
 
             # Strong signals only
-            # if len(signals) >= 2 and surge >= THRESHOLD and get_market_indicator():
-            if len(signals) >= 2 and surge >= THRESHOLD:
+            if len(signals) >= 2 and surge >= THRESHOLD and get_market_indicator():
+            # if len(signals) >= 2 and surge >= THRESHOLD:
                 # Check if already holding position
                 if has_open_position(sym):
                     print(f"⚠️ Already holding position for {sym}, skipping buy signal")
