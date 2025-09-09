@@ -321,20 +321,20 @@ def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
     df = add_indicators(df)
 
     # --- Risk Management: Stop Loss ---
-    profit_pct = (last_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
-    if profit_pct <= -5:
-        signals.append("Stop Loss Hit (-5%)")
+    # profit_pct = (last_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+    # if profit_pct <= -5:
+    #     signals.append("Stop Loss Hit (-5%)")
 
-    if profit_pct > 10:
-        signals.append("Profit Hit (10%)")
+    # if profit_pct > 10:
+    #     signals.append("Profit Hit (10%)")
 
     # --- Technical Selling Signals ---
-    if df['ema50'].iloc[-1] < df['ema200'].iloc[-1] and df['ema50'].iloc[-2] >= df['ema200'].iloc[-2]:
-        signals.append("Death Cross (SELL)")
-    if df['rsi'].iloc[-1] > 70 and df['rsi'].iloc[-1] < df['rsi'].iloc[-2]:
-        signals.append("RSI Overbought (SELL)")
-    if df['macd'].iloc[-1] < df['signal'].iloc[-1] and df['macd'].iloc[-2] >= df['signal'].iloc[-2]:
-        signals.append("MACD Bearish Crossover (SELL)")
+    # if df['ema50'].iloc[-1] < df['ema200'].iloc[-1] and df['ema50'].iloc[-2] >= df['ema200'].iloc[-2]:
+    #     signals.append("Death Cross (SELL)")
+    # if df['rsi'].iloc[-1] > 70 and df['rsi'].iloc[-1] < df['rsi'].iloc[-2]:
+    #     signals.append("RSI Overbought (SELL)")
+    # if df['macd'].iloc[-1] < df['signal'].iloc[-1] and df['macd'].iloc[-2] >= df['signal'].iloc[-2]:
+    #     signals.append("MACD Bearish Crossover (SELL)")
 
     # --- Trailing Stop: Use max of last 5 close prices ---
     recent_high = df['close'].tail(5).max()
