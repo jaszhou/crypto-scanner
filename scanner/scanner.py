@@ -23,7 +23,10 @@ DB_CONFIG = {
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-THRESHOLD = float(os.getenv("THRESHOLD", "1.0"))
+THRESHOLD = float(os.getenv("THRESHOLD", 1.0))
+
+TRAILING_STOP_PCT = float(os.getenv("TRAILING_STOP_PCT", 5)) # Default to 5% if not set
+NUM_SYMBOLS = int(os.getenv("NUM_SYMBOLS", 30))  # Default to 30 if not set
 
 # import os
 # import ccxt
@@ -302,7 +305,7 @@ def get_top_market_cap_symbols(limit=10):
     print(f"⏱️ get_top_market_cap_symbols took {time.time() - start_time:.3f}s")
     return [s[0] for s in top_symbols]
 
-def fetch_binance_marketcap_top20():
+def fetch_binance_marketcap_top20(limit=20):
     """
     Fetch approximate top 20 coins by market cap from Binance's internal API.
     """
@@ -341,7 +344,7 @@ def fetch_binance_marketcap_top20():
     df = pd.DataFrame(rows)
     df = df.dropna(subset=["market_cap_usdt"])
     df = df.sort_values("market_cap_usdt", ascending=False)
-    df_top20 = df.head(20).reset_index(drop=True)
+    df_top20 = df.head(limit).reset_index(drop=True)
     return df_top20
 
 
@@ -374,7 +377,9 @@ def check_buy_signal(df):
 def scan_symbols_last_day(num_symbols=10):
     start_time = time.time()
     print(f"🔧 DEBUG: scan_symbols called")
-    SYMBOLS = fetch_binance_marketcap_top20()['symbol_pair'].tolist()
+    SYMBOLS = fetch_binance_marketcap_top20(num_symbols)['symbol_pair'].tolist()
+
+    print(f"🔧 DEBUG: Top symbols by market cap: {SYMBOLS}")
     alerts = []
 
 
@@ -487,9 +492,9 @@ def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
     # --- Trailing Stop: Use max of last 5 close prices ---
     recent_high = df['close'].tail(5).max()
     
-    trailing_stop_pct = 5
+    
     print(f"🔍 {sym} max of last 5 closes: {recent_high}, last price: {last_price}")
-    if last_price < recent_high * (1 - trailing_stop_pct / 100):
+    if last_price < recent_high * (1 - TRAILING_STOP_PCT / 100):
         signals.append("Trailing Stop Triggered (SELL)")
 
     # --- Place order if any exit condition is met ---
@@ -512,7 +517,7 @@ if __name__ == "__main__":
 
     last_future_update = 0
     while get_USDT_balance() > 10:  # Ensure minimum balance to trade
-        alerts = scan_symbols_last_day(num_symbols=10)
+        alerts = scan_symbols_last_day(NUM_SYMBOLS)
 
         for sym, df in alerts:
             
@@ -522,8 +527,8 @@ if __name__ == "__main__":
 
 
             # Strong signals only
-            # if get_market_indicator():
-            if True:
+            if get_market_indicator():
+            # if True:
                 # Check if already holding position
                 if has_open_position(sym):
                     print(f"⚠️ Already holding position for {sym}, skipping buy signal")
