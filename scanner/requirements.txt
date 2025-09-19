@@ -1,6 +1,6 @@
 ccxt
 pandas
-talib
+# talib
 requests
 mplfinance
 psycopg2-binary

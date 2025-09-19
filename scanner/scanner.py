@@ -1,6 +1,6 @@
 import ccxt
 import pandas as pd
-import talib
+# import talib
 import requests
 import mplfinance as mpf
 import tempfile
@@ -145,7 +145,8 @@ def has_open_position(symbol):
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM positions WHERE symbol=%s AND status='open'", (symbol,))
+        # Check for open positions or if a trade for this symbol has already been made today
+        cur.execute("SELECT COUNT(*) FROM positions WHERE symbol=%s AND (status='open' OR timestamp::date = CURRENT_DATE)", (symbol,))
         count = cur.fetchone()[0]
         cur.close()
         conn.close()
@@ -274,6 +275,76 @@ def get_top_usdt_symbols(limit=50):
     return [s[0] for s in top_symbols]
 
 
+def get_top_market_cap_symbols(limit=10):
+    """Fetch top symbols by market cap."""
+    start_time = time.time()
+    print(f"🔧 DEBUG: get_top_market_cap_symbols called with limit={limit}")
+    
+    exchange.load_markets()
+    usdt_pairs = {s.split('/')[0]: s for s in exchange.symbols if s.endswith("/USDT")}
+    
+    tickers = exchange.fetch_tickers()
+    
+    all_currencies = exchange.fetch_currencies()
+    
+    market_caps = []
+    for code, currency_data in all_currencies.items():
+        if code in usdt_pairs:
+            symbol = usdt_pairs[code]
+            if symbol in tickers and 'last' in tickers[symbol] and tickers[symbol]['last'] is not None:
+                circulating_supply = currency_data.get('circulating')
+                if circulating_supply:
+                    market_cap = tickers[symbol]['last'] * circulating_supply
+                    market_caps.append((symbol, market_cap))
+
+    top_symbols = sorted(market_caps, key=lambda x: x[1], reverse=True)[:limit]
+    
+    print(f"⏱️ get_top_market_cap_symbols took {time.time() - start_time:.3f}s")
+    return [s[0] for s in top_symbols]
+
+def fetch_binance_marketcap_top20():
+    """
+    Fetch approximate top 20 coins by market cap from Binance's internal API.
+    """
+    url = "https://www.binance.com/bapi/asset/v2/public/asset-service/product/get-products"
+    resp = requests.get(url)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if "data" not in data:
+        raise RuntimeError("Unexpected response from Binance API")
+
+    products = data["data"]
+    rows = []
+    for p in products:
+        try:
+            symbol = p["s"]
+            base = p["b"]
+            quote = p["q"]
+            if quote != "USDT":
+                continue  # only consider USDT pairs
+
+            price = float(p["c"])
+            cs = float(p.get("cs") or 0)
+            market_cap = price * cs if cs > 0 else None
+
+            rows.append({
+                "symbol_pair": symbol,
+                "coin": base,
+                "price_usdt": price,
+                "circulating_supply": cs,
+                "market_cap_usdt": market_cap
+            })
+        except Exception:
+            continue
+
+    df = pd.DataFrame(rows)
+    df = df.dropna(subset=["market_cap_usdt"])
+    df = df.sort_values("market_cap_usdt", ascending=False)
+    df_top20 = df.head(20).reset_index(drop=True)
+    return df_top20
+
+
 def get_ohlcv(symbol, timeframe='1d', limit=10):
     """Fetch OHLCV and return a pandas DataFrame."""
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -282,6 +353,7 @@ def get_ohlcv(symbol, timeframe='1d', limit=10):
     df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
     df.set_index('date', inplace=True)
     return df[['open','close','volume','high','low','timestamp']]
+
 def check_buy_signal(df):
     """Add columns and return the last row with buy signal status."""
     df = df.copy()
@@ -302,7 +374,7 @@ def check_buy_signal(df):
 def scan_symbols_last_day(num_symbols=10):
     start_time = time.time()
     print(f"🔧 DEBUG: scan_symbols called")
-    SYMBOLS = get_top_usdt_symbols(num_symbols)
+    SYMBOLS = fetch_binance_marketcap_top20()['symbol_pair'].tolist()
     alerts = []
 
 
@@ -324,6 +396,7 @@ def scan_symbols_last_day(num_symbols=10):
         if df['buy_signal'].iloc[-1]:
             buy_signals_today.append(sym)
             alerts.append((sym, df))
+            print(f"✅ Buy signal for {sym} on {df.index[-1].date()}")
 
     if buy_signals_today:
         print("✅ Buy signals detected today for:", ", ".join(buy_signals_today))
@@ -343,8 +416,8 @@ def scan_symbols(num_symbols=10):
         try:
             ohlcv = exchange.fetch_ohlcv(sym, '1h', limit=250)
             df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
-            df['rsi'] = talib.RSI(df['close'], timeperiod=14)
-            macd, macdsignal, _ = talib.MACD(df['close'], 12,26,9)
+            # df['rsi'] = talib.RSI(df['close'], timeperiod=14)
+            # macd, macdsignal, _ = talib.MACD(df['close'], 12,26,9)
             surge = percent_change(df['open'].iloc[-1], df['close'].iloc[-1])
             rsi_val = df['rsi'].iloc[-1]
             macd_val, sig_val = macd.iloc[-1], macdsignal.iloc[-1]
@@ -439,12 +512,14 @@ if __name__ == "__main__":
 
     last_future_update = 0
     while get_USDT_balance() > 10:  # Ensure minimum balance to trade
-        alerts = scan_symbols_last_day(num_symbols=50)
+        alerts = scan_symbols_last_day(num_symbols=10)
 
         for sym, df in alerts:
             
             close_price = df['close'].iloc[-1]
             save_to_postgres(sym, close_price)
+
+
 
             # Strong signals only
             # if get_market_indicator():
@@ -457,9 +532,22 @@ if __name__ == "__main__":
                 print(f"📊 {sym}\n")
 
                 msg = f"📊 {sym}\nBuying..price: {close_price}.\n"
-                send_telegram_text(msg)
+                # msg = f"📊 {sym} \n Buying..price: {close_price} open: {open}, close: {close_price}, change: {price_change:.2f}, up: {up}, prev_up: {prev_up}, volume: {volume:.2f}, vol_change: {volume_change:.2f}, prev_vol_change: {prev_volume_change:.2f}\n"
+
+
+                print(df)
                 chart_path = plot_chart(df, sym)
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
+
+            # price_change = df['price_change'].iloc[-1]
+            # open = df['open'].iloc[-1]
+            # up = df['up'].iloc[-1]
+            # prev_up = df['prev_up'].iloc[-1]    
+            # volume_change = df['volume_change'].iloc[-1]
+            # volume = df['volume'].iloc[-1]
+            # prev_volume_change = df['prev_volume_change'].iloc[-1]
+            
+                send_telegram_text(msg)
                 # os.remove(chart_path)
 
                 # Determine trade amount in base currency
@@ -499,7 +587,7 @@ if __name__ == "__main__":
                 
             # Get fresh data for exit analysis
             try:
-                ohlcv = exchange.fetch_ohlcv(sym, '1h', limit=20)
+                ohlcv = exchange.fetch_ohlcv(sym, '1d', limit=30)
                 df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
                 ticker = exchange.fetch_ticker(sym)
                 last_price = ticker['last']
