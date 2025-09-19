@@ -178,17 +178,26 @@ def send_telegram_chart(image_path, caption=""):
     print(f"⏱️ send_telegram_chart took {time.time() - start_time:.3f}s")
 
 # ------------------ DATABASE ------------------
-def save_to_postgres(symbol, surge, rsi, macd, sig, golden_cross, signals, close_price):
+def save_to_postgres(symbol, rsi=None, macd=None, sig=None, golden_cross=None, signals=None, close_price=None):
     start_time = time.time()
-    # print(f"🔧 DEBUG: save_to_postgres called with symbol={symbol}, surge={surge}, signals={signals}")
+    # print(f"🔧 DEBUG: save_to_postgres called with symbol={symbol}, rsi={rsi}, signals={signals}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
+
+        # Handle optional parameters. psycopg2 converts None to NULL.
+        db_rsi = float(rsi) if rsi is not None else None
+        db_macd = float(macd) if macd is not None else None
+        db_sig = float(sig) if sig is not None else None
+        db_golden_cross = bool(golden_cross) if golden_cross is not None else None
+        db_signals = ", ".join(signals) if signals else ""
+        db_close_price = float(close_price) if close_price is not None else None
+
         cur.execute("""
             INSERT INTO crypto_signals 
-            (symbol, surge, rsi, macd, macd_signal, golden_cross, signals, close_price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (symbol, float(surge), float(rsi), float(macd), float(sig), bool(golden_cross), ", ".join(signals), float(close_price)))
+            (symbol, rsi, macd, macd_signal, golden_cross, signals, close_price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (symbol, db_rsi, db_macd, db_sig, db_golden_cross, db_signals, db_close_price))
         conn.commit()
         cur.close()
         conn.close()
@@ -196,6 +205,7 @@ def save_to_postgres(symbol, surge, rsi, macd, sig, golden_cross, signals, close
         print(f"❌ DB Error for {symbol}: {e}")
     # finally:
     #     print(f"⏱️ save_to_postgres took {time.time() - start_time:.3f}s")
+
 
 def update_future_returns():
     start_time = time.time()
@@ -242,13 +252,14 @@ def check_golden_cross(df, short=50, long=200):
     df["ema_long"] = df["close"].ewm(span=long).mean()
     return df["ema_short"].iloc[-1] > df["ema_long"].iloc[-1]
 
+
 def plot_chart(df, symbol):
     df_plot = df.copy()
-    df_plot.index = pd.to_datetime(df_plot['time'], unit='ms')
+    df_plot.index = pd.to_datetime(df_plot['timestamp'], unit='ms')
     df_plot = df_plot[['open','high','low','close','volume']]
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    mpf.plot(df_plot.tail(80), type='candle', volume=True, style='yahoo',
-             title=f"{symbol} - Last 80 Hours", mav=(9,21,50), savefig=temp_file.name)
+    mpf.plot(df_plot.tail(30), type='candle', volume=True, style='yahoo',
+             title=f"{symbol} - Last 30 Days", mav=(9,21,50), savefig=temp_file.name)
     return temp_file.name
 
 def get_top_usdt_symbols(limit=50):
@@ -261,6 +272,66 @@ def get_top_usdt_symbols(limit=50):
     top_symbols = sorted(volume_data, key=lambda x: x[1], reverse=True)[:limit]
     print(f"⏱️ get_top_usdt_symbols took {time.time() - start_time:.3f}s")
     return [s[0] for s in top_symbols]
+
+
+def get_ohlcv(symbol, timeframe='1d', limit=10):
+    """Fetch OHLCV and return a pandas DataFrame."""
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+    # ccxt returns [timestamp, open, high, low, close, volume]
+    df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
+    df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('date', inplace=True)
+    return df[['open','close','volume','high','low','timestamp']]
+def check_buy_signal(df):
+    """Add columns and return the last row with buy signal status."""
+    df = df.copy()
+    df['price_change'] = df['close'] - df['open']
+    df['up'] = df['price_change'] > 0
+    df['prev_up'] = df['up'].shift(1)
+
+    df['volume_change'] = df['volume'].pct_change()
+    df['prev_volume_change'] = df['volume_change'].shift(1)
+
+    df['buy_signal'] = (
+        (df['up']) &
+        (df['prev_up']) &
+        ((df['volume_change'] > 0) | (df['prev_volume_change'] > 0))
+    )
+    return df
+
+def scan_symbols_last_day(num_symbols=10):
+    start_time = time.time()
+    print(f"🔧 DEBUG: scan_symbols called")
+    SYMBOLS = get_top_usdt_symbols(num_symbols)
+    alerts = []
+
+
+    timeframe = '1d'      # daily candles
+    limit = 30            # how many candles to fet
+
+    buy_signals_today = []
+
+    for sym in SYMBOLS:
+        df = get_ohlcv(sym, timeframe=timeframe, limit=limit)
+
+        # ohlcv = exchange.fetch_ohlcv(sym, timeframe=timeframe, limit=limit)
+        # df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
+        
+        # print(f"DEBUG: {sym} df.head(5):")
+        # print(df.head(5))
+
+        df = check_buy_signal(df)
+        if df['buy_signal'].iloc[-1]:
+            buy_signals_today.append(sym)
+            alerts.append((sym, df))
+
+    if buy_signals_today:
+        print("✅ Buy signals detected today for:", ", ".join(buy_signals_today))
+    else:
+        print("❌ No buy signals today.")
+
+    print(f"⏱️ scan_symbols took {time.time() - start_time:.3f}s")
+    return alerts
 
 # ------------------ MAIN SCAN ------------------
 def scan_symbols(num_symbols=10):
@@ -295,6 +366,10 @@ def scan_symbols(num_symbols=10):
     return alerts
 
 def add_indicators(df):
+    # Ensure we have the right column name
+    if 'Close' in df.columns:
+        df['close'] = df['Close']
+    
     # EMA50 / EMA200
     df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
     df['ema200'] = df['close'].ewm(span=200, adjust=False).mean()
@@ -364,24 +439,24 @@ if __name__ == "__main__":
 
     last_future_update = 0
     while get_USDT_balance() > 10:  # Ensure minimum balance to trade
-        alerts = scan_symbols(num_symbols=10)
+        alerts = scan_symbols_last_day(num_symbols=50)
 
-        for sym, signals, surge, rsi_val, macd_val, sig_val, golden_cross, df in alerts:
+        for sym, df in alerts:
             
             close_price = df['close'].iloc[-1]
-            save_to_postgres(sym, surge, rsi_val, macd_val, sig_val, golden_cross, signals, close_price)
+            save_to_postgres(sym, close_price)
 
             # Strong signals only
-            if len(signals) >= 2 and surge >= THRESHOLD and get_market_indicator():
-            # if len(signals) >= 2 and surge >= THRESHOLD:
+            # if get_market_indicator():
+            if True:
                 # Check if already holding position
                 if has_open_position(sym):
                     print(f"⚠️ Already holding position for {sym}, skipping buy signal")
                     continue
 
-                print(f"📊 {sym}\nSignals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%")
+                print(f"📊 {sym}\n")
 
-                msg = f"📊 {sym}\nBuying..price: {close_price}. Signals: {', '.join(signals)}\nRSI: {rsi_val:.2f}\nMACD: {macd_val:.5f} | Signal: {sig_val:.5f}\n1h Change: {surge:.2f}%"
+                msg = f"📊 {sym}\nBuying..price: {close_price}.\n"
                 send_telegram_text(msg)
                 chart_path = plot_chart(df, sym)
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
@@ -424,8 +499,8 @@ if __name__ == "__main__":
                 
             # Get fresh data for exit analysis
             try:
-                ohlcv = exchange.fetch_ohlcv(sym, '1h', limit=50)
-                df = pd.DataFrame(ohlcv, columns=['time','open','high','low','close','volume'])
+                ohlcv = exchange.fetch_ohlcv(sym, '1h', limit=20)
+                df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
                 ticker = exchange.fetch_ticker(sym)
                 last_price = ticker['last']
                 profit_pct = (last_price - entry_price)/entry_price*100 if entry_price > 0 else 0
