@@ -339,7 +339,7 @@ def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
     # --- Trailing Stop: Use max of last 5 close prices ---
     recent_high = df['close'].tail(5).max()
     
-    trailing_stop_pct = 10
+    trailing_stop_pct = 5
     print(f"🔍 {sym} max of last 5 closes: {recent_high}, last price: {last_price}")
     if last_price < recent_high * (1 - trailing_stop_pct / 100):
         signals.append("Trailing Stop Triggered (SELL)")
