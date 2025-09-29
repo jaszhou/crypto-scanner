@@ -27,7 +27,7 @@ THRESHOLD = float(os.getenv("THRESHOLD", 1.0))
 
 TRAILING_STOP_PCT = float(os.getenv("TRAILING_STOP_PCT", 5)) # Default to 5% if not set
 NUM_SYMBOLS = int(os.getenv("NUM_SYMBOLS", 30))  # Default to 30 if not set
-
+PROFIT_TARGET_PCT = float(os.getenv("PROFIT_TARGET_PCT", 10))  # Default to 10% if not set
 # import os
 # import ccxt
 # import psycopg2
@@ -308,6 +308,7 @@ def get_top_market_cap_symbols(limit=10):
 def fetch_binance_marketcap_top20(limit=20):
     """
     Fetch approximate top 20 coins by market cap from Binance's internal API.
+    Only include pairs with daily change > 2%.
     """
     url = "https://www.binance.com/bapi/asset/v2/public/asset-service/product/get-products"
     resp = requests.get(url)
@@ -328,6 +329,12 @@ def fetch_binance_marketcap_top20(limit=20):
                 continue  # only consider USDT pairs
 
             price = float(p["c"])
+            daily_change = float(p.get("P", 0))  # Daily change percentage
+            
+            # Only include pairs with daily change > 2%
+            if daily_change <= 2.0:
+                continue
+                
             cs = float(p.get("cs") or 0)
             market_cap = price * cs if cs > 0 else None
 
@@ -335,6 +342,7 @@ def fetch_binance_marketcap_top20(limit=20):
                 "symbol_pair": symbol,
                 "coin": base,
                 "price_usdt": price,
+                "daily_change": daily_change,
                 "circulating_supply": cs,
                 "market_cap_usdt": market_cap
             })
@@ -342,6 +350,10 @@ def fetch_binance_marketcap_top20(limit=20):
             continue
 
     df = pd.DataFrame(rows)
+    if df.empty or "market_cap_usdt" not in df.columns:
+        print("⚠️ No valid data found or market_cap_usdt column missing")
+        return pd.DataFrame(columns=["symbol_pair", "coin", "price_usdt", "daily_change", "circulating_supply", "market_cap_usdt"])
+    
     df = df.dropna(subset=["market_cap_usdt"])
     df = df.sort_values("market_cap_usdt", ascending=False)
     df_top20 = df.head(limit).reset_index(drop=True)
@@ -370,7 +382,8 @@ def check_buy_signal(df):
     df['buy_signal'] = (
         (df['up']) &
         (df['prev_up']) &
-        ((df['volume_change'] > 0) | (df['prev_volume_change'] > 0))
+        (df['volume_change'] > 0) & 
+        (df['prev_volume_change'] > 0)
     )
     return df
 
@@ -478,8 +491,8 @@ def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
     # if profit_pct <= -5:
     #     signals.append("Stop Loss Hit (-5%)")
 
-    # if profit_pct > 10:
-    #     signals.append("Profit Hit (10%)")
+    if profit_pct > PROFIT_TARGET_PCT:
+        signals.append(f"Profit Hit ({profit_pct:.2f}%)")
 
     # --- Technical Selling Signals ---
     # if df['ema50'].iloc[-1] < df['ema200'].iloc[-1] and df['ema50'].iloc[-2] >= df['ema200'].iloc[-2]:
