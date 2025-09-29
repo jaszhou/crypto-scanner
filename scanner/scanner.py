@@ -278,87 +278,6 @@ def get_top_usdt_symbols(limit=50):
     return [s[0] for s in top_symbols]
 
 
-def get_top_market_cap_symbols(limit=10):
-    """Fetch top symbols by market cap."""
-    start_time = time.time()
-    print(f"🔧 DEBUG: get_top_market_cap_symbols called with limit={limit}")
-    
-    exchange.load_markets()
-    usdt_pairs = {s.split('/')[0]: s for s in exchange.symbols if s.endswith("/USDT")}
-    
-    tickers = exchange.fetch_tickers()
-    
-    all_currencies = exchange.fetch_currencies()
-    
-    market_caps = []
-    for code, currency_data in all_currencies.items():
-        if code in usdt_pairs:
-            symbol = usdt_pairs[code]
-            if symbol in tickers and 'last' in tickers[symbol] and tickers[symbol]['last'] is not None:
-                circulating_supply = currency_data.get('circulating')
-                if circulating_supply:
-                    market_cap = tickers[symbol]['last'] * circulating_supply
-                    market_caps.append((symbol, market_cap))
-
-    top_symbols = sorted(market_caps, key=lambda x: x[1], reverse=True)[:limit]
-    
-    print(f"⏱️ get_top_market_cap_symbols took {time.time() - start_time:.3f}s")
-    return [s[0] for s in top_symbols]
-
-def fetch_binance_marketcap_top20(limit=20):
-    """
-    Fetch approximate top 20 coins by market cap from Binance's internal API.
-    Only include pairs with daily change > 2%.
-    """
-    url = "https://www.binance.com/bapi/asset/v2/public/asset-service/product/get-products"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    data = resp.json()
-
-    if "data" not in data:
-        raise RuntimeError("Unexpected response from Binance API")
-
-    products = data["data"]
-    rows = []
-    for p in products:
-        try:
-            symbol = p["s"]
-            base = p["b"]
-            quote = p["q"]
-            if quote != "USDT":
-                continue  # only consider USDT pairs
-
-            price = float(p["c"])
-            daily_change = float(p.get("P", 0))  # Daily change percentage
-            
-            # Only include pairs with daily change > 2%
-            if daily_change <= 2.0:
-                continue
-                
-            cs = float(p.get("cs") or 0)
-            market_cap = price * cs if cs > 0 else None
-
-            rows.append({
-                "symbol_pair": symbol,
-                "coin": base,
-                "price_usdt": price,
-                "daily_change": daily_change,
-                "circulating_supply": cs,
-                "market_cap_usdt": market_cap
-            })
-        except Exception:
-            continue
-
-    df = pd.DataFrame(rows)
-    if df.empty or "market_cap_usdt" not in df.columns:
-        print("⚠️ No valid data found or market_cap_usdt column missing")
-        return pd.DataFrame(columns=["symbol_pair", "coin", "price_usdt", "daily_change", "circulating_supply", "market_cap_usdt"])
-    
-    df = df.dropna(subset=["market_cap_usdt"])
-    df = df.sort_values("market_cap_usdt", ascending=False)
-    df_top20 = df.head(limit).reset_index(drop=True)
-    return df_top20
-
 
 def get_ohlcv(symbol, timeframe='1d', limit=10):
     """Fetch OHLCV and return a pandas DataFrame."""
@@ -373,6 +292,7 @@ def check_buy_signal(df):
     """Add columns and return the last row with buy signal status."""
     df = df.copy()
     df['price_change'] = df['close'] - df['open']
+    df['price_change_pct'] = (df['price_change'] / df['open']) * 100
     df['up'] = df['price_change'] > 0
     df['prev_up'] = df['up'].shift(1)
 
@@ -382,6 +302,7 @@ def check_buy_signal(df):
     df['buy_signal'] = (
         (df['up']) &
         (df['prev_up']) &
+        (df['price_change_pct'] > 2.0) &
         (df['volume_change'] > 0) & 
         (df['prev_volume_change'] > 0)
     )
@@ -390,7 +311,10 @@ def check_buy_signal(df):
 def scan_symbols_last_day(num_symbols=10):
     start_time = time.time()
     print(f"🔧 DEBUG: scan_symbols called")
-    SYMBOLS = fetch_binance_marketcap_top20(num_symbols)['symbol_pair'].tolist()
+    # SYMBOLS = fetch_binance_marketcap_top20(num_symbols)['symbol_pair'].tolist()
+
+    SYMBOLS = get_top_usdt_symbols(num_symbols)
+
 
     print(f"🔧 DEBUG: Top symbols by market cap: {SYMBOLS}")
     alerts = []
