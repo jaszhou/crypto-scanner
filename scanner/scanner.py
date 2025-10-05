@@ -34,6 +34,7 @@ PROFIT_TARGET_PCT = float(os.getenv("PROFIT_TARGET_PCT", 10))  # Default to 10% 
 
 TRADING_MODE = os.environ.get("TRADING_MODE", "paper")
 TRADE_AMOUNT_USD = float(os.environ.get("TRADE_AMOUNT_USD", 50))
+TRADE_MAX = int(os.environ.get("TRADE_MAX", 5)) # maximum number of trades
 
 # Initialize exchange for live trading
 exchange_live = None
@@ -49,22 +50,26 @@ def place_order(symbol, side, amount):
     start_time = time.time()
     print(f"🔧 DEBUG: place_order called with symbol={symbol}, side={side}, amount={amount}")
     try:
+        ticker = exchange.fetch_ticker(symbol)
+        price = ticker['last']
+    
+        if side == "sell":
+            # Update position with exit price
+            update_position_exit(symbol, price)
+        else:
+            save_position(symbol, side, amount, price)
+        
         if TRADING_MODE == "paper":
-            ticker = exchange.fetch_ticker(symbol)
-            price = ticker['last']
+
             print(f"📄 Paper trade: {side} {amount:.6f} {symbol} at {price}")
-            if side == "sell":
-                # Update position with exit price
-                update_position_exit(symbol, price)
-            else:
-                save_position(symbol, side, amount, price)
+
+
             return {"status": "paper"}
         else:
             try:
                 order = exchange_live.create_market_order(symbol, side, amount)
-                entry_price = float(order['fills'][0]['price'])
-                save_position(symbol, side, amount, entry_price)
-                print(f"✅ Live trade executed: {side} {amount:.6f} {symbol} at {entry_price}")
+
+                print(f"✅ Live trade executed: {side} {amount:.6f} {symbol} at {price}")
                 return order
             except Exception as e:
                 print(f"❌ Trade failed: {e}")
@@ -73,18 +78,7 @@ def place_order(symbol, side, amount):
         print(f"⏱️ place_order took {time.time() - start_time:.3f}s")
         msg = f"📊 {symbol}\n {side}"
         send_telegram_text(msg)
-        # chart_path = plot_chart(df, sym)
-        # send_telegram_chart(chart_path, caption=f"{sym} Chart")
-        # Update status in DB
-        # try:
-        #     conn = psycopg2.connect(**DB_CONFIG)
-        #     cur = conn.cursor()
-        #     cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
-        #     conn.commit()
-        #     cur.close()
-        #     conn.close()
-        # except Exception as e:
-        #     print(f"❌ Failed to close position: {e}")
+
 
 # Save position to Postgres
 def save_position(symbol, side, amount, entry_price):
@@ -160,6 +154,23 @@ def has_open_position(symbol):
     finally:
         print(f"⏱️ has_open_position took {time.time() - start_time:.3f}s")
 
+def has_open_coin():
+    start_time = time.time()
+    print("🔧 DEBUG: has_open_position called ")
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        # Check for open positions or if a trade for this symbol has already been made today
+        cur.execute("SELECT COUNT(*) FROM positions WHERE status='open'")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"❌ Failed to check position for {symbol}: {e}")
+        return False
+    finally:
+        print(f"⏱️ has_open_position took {time.time() - start_time:.3f}s")
 
 exchange = ccxt.binance()
 
@@ -453,79 +464,57 @@ if __name__ == "__main__":
     print("=====================")
 
     last_future_update = 0
-    while get_USDT_balance() > 10:  # Ensure minimum balance to trade
-        alerts = scan_symbols_last_day(NUM_SYMBOLS)
+    while get_USDT_balance() > TRADE_AMOUNT_USD:  # Ensure minimum balance to trade
 
-        for sym, df in alerts:
+        # buying condition
+        if has_open_coin() < TRADE_MAX:
+
+            alerts = scan_symbols_last_day(NUM_SYMBOLS)
+
+            for sym, df in alerts:
+                
+                close_price = df['close'].iloc[-1]
+                save_to_postgres(sym, close_price)
+
+                # Strong signals only
+                if get_market_indicator():
+                # if True:
+                    # Check if already holding position
+                    if has_open_position(sym):
+                        print(f"⚠️ Already holding position for {sym}, skipping buy signal")
+                        continue
+
+                    print(f"📊 {sym}\n")
+
+                    msg = f"📊 {sym}\nBuying..price: {close_price}.\n"
+                    # msg = f"📊 {sym} \n Buying..price: {close_price} open: {open}, close: {close_price}, change: {price_change:.2f}, up: {up}, prev_up: {prev_up}, volume: {volume:.2f}, vol_change: {volume_change:.2f}, prev_vol_change: {prev_volume_change:.2f}\n"
+
+
+                    print(df)
+                    chart_path = plot_chart(df, sym)
+                    send_telegram_chart(chart_path, caption=f"{sym} Chart")
+                
+                    send_telegram_text(msg)
+                    # os.remove(chart_path)
+
+                    # Determine trade amount in base currency
+                    ticker = exchange.fetch_ticker(sym)
+                    price = ticker['last']
+
+                    flow_num = get_flow_balance()
+                    
+                    TRADE_AMOUNT_USD = flow_num * 10 if flow_num else TRADE_AMOUNT_USD 
+                    amount = TRADE_AMOUNT_USD / price
+
+                    # Place buy order
+                    place_order(sym, "buy", amount)
+        else:
+            print(f"⚠️ Maximum open trades reached ({TRADE_MAX}), skipping buy signals  this cycle.")
             
-            close_price = df['close'].iloc[-1]
-            save_to_postgres(sym, close_price)
-
-
-
-            # Strong signals only
-            if get_market_indicator():
-            # if True:
-                # Check if already holding position
-                if has_open_position(sym):
-                    print(f"⚠️ Already holding position for {sym}, skipping buy signal")
-                    continue
-
-                print(f"📊 {sym}\n")
-
-                msg = f"📊 {sym}\nBuying..price: {close_price}.\n"
-                # msg = f"📊 {sym} \n Buying..price: {close_price} open: {open}, close: {close_price}, change: {price_change:.2f}, up: {up}, prev_up: {prev_up}, volume: {volume:.2f}, vol_change: {volume_change:.2f}, prev_vol_change: {prev_volume_change:.2f}\n"
-
-
-                print(df)
-                chart_path = plot_chart(df, sym)
-                send_telegram_chart(chart_path, caption=f"{sym} Chart")
-
-            # price_change = df['price_change'].iloc[-1]
-            # open = df['open'].iloc[-1]
-            # up = df['up'].iloc[-1]
-            # prev_up = df['prev_up'].iloc[-1]    
-            # volume_change = df['volume_change'].iloc[-1]
-            # volume = df['volume'].iloc[-1]
-            # prev_volume_change = df['prev_volume_change'].iloc[-1]
-            
-                send_telegram_text(msg)
-                # os.remove(chart_path)
-
-                # Determine trade amount in base currency
-                ticker = exchange.fetch_ticker(sym)
-                price = ticker['last']
-                amount = TRADE_AMOUNT_USD / price
-
-                # Place buy order
-                place_order(sym, "buy", amount)
-        
-        # Update future returns hourly
-        # current_time = time.time()
-        # if current_time - last_future_update >= 3600:  # 3600 seconds = 1 hour
-        #     update_future_returns()
-        #     last_future_update = current_time
 
         # Check for exit conditions
         positions = get_open_positions()
         for pos_id, sym, side, entry_price, amount in positions:
-            # Check minimum hold time (5 minutes)
-            # try:
-            #     conn = psycopg2.connect(**DB_CONFIG)
-            #     cur = conn.cursor()
-            #     cur.execute("SELECT timestamp FROM positions WHERE id=%s", (pos_id,))
-            #     entry_time = cur.fetchone()[0]
-            #     cur.close()
-            #     conn.close()
-                
-            #     # time_held = (time.time() - entry_time.timestamp()) / 60  # minutes
-            #     # print(f"⏰ {sym} held for {time_held:.1f}min, minimum 5min required")
-            #     # if time_held < 5:
-            #     #     print(f"⏰ {sym} held for {time_held:.1f}min, minimum 5min required")
-            #     #     continue
-            # except Exception as e:
-            #     print(f"❌ Error checking hold time for {sym}: {e}")
-            #     continue
                 
             # Get fresh data for exit analysis
             try:
@@ -546,24 +535,8 @@ if __name__ == "__main__":
                 chart_path = plot_chart(df, sym)    
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
 
-
-            # Example exit: +2% profit or -1% loss
-            # if profit_pct >= 5 or profit_pct <= -5:
-            #     place_order(sym, "sell", amount)
-            #     msg = f"📊 {sym}\nSelling..."
-            #     send_telegram_text(msg)
-            #     # chart_path = plot_chart(df, sym)
-            #     # send_telegram_chart(chart_path, caption=f"{sym} Chart")
-            #     # Update status in DB
-            #     try:
-            #         conn = psycopg2.connect(**DB_CONFIG)
-            #         cur = conn.cursor()
-            #         cur.execute("UPDATE positions SET status='closed' WHERE id=%s", (pos_id,))
-            #         conn.commit()
-            #         cur.close()
-            #         conn.close()
-            #     except Exception as e:
-            #         print(f"❌ Failed to close position: {e}")
+                # Place sell order
+                place_order(sym, "sell", amount)
 
 
         # Wait 10 minutes before next scan
