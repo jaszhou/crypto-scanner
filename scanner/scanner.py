@@ -7,6 +7,9 @@ import tempfile
 import os
 import psycopg2
 import time
+from datetime import datetime
+import pytz
+import functools
 from dotenv import load_dotenv
 from market import get_market_indicator
 from get_list import *
@@ -45,7 +48,23 @@ if TRADING_MODE == "live":
         "enableRateLimit": True,
     })
 
-# Function to place order
+def sydney_time():
+    return datetime.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')
+
+def sydney_time_logger(func):
+    """A decorator to log function execution time with Sydney timestamps."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"[{sydney_time()}] --- Entering {func.__name__} ---")
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"[{sydney_time()}] --- Exiting {func.__name__}. Execution time: {end_time - start_time:.3f}s ---")
+        return result
+    return wrapper
+
+# Function to place order with logging
+@sydney_time_logger
 def place_order(symbol, side, amount):
     start_time = time.time()
     print(f"🔧 DEBUG: place_order called with symbol={symbol}, side={side}, amount={amount}")
@@ -119,6 +138,7 @@ def update_position_exit(symbol, exit_price):
         print(f"⏱️ update_position_exit took {time.time() - start_time:.3f}s")
 
 # Check open positions for exit rules
+@sydney_time_logger
 def get_open_positions():
     start_time = time.time()
     print(f"🔧 DEBUG: get_open_positions called")
@@ -154,6 +174,7 @@ def has_open_position(symbol):
     finally:
         print(f"⏱️ has_open_position took {time.time() - start_time:.3f}s")
 
+@sydney_time_logger
 def has_open_coin():
     start_time = time.time()
     print("🔧 DEBUG: has_open_position called ")
@@ -319,6 +340,7 @@ def check_buy_signal(df):
     )
     return df
 
+@sydney_time_logger
 def scan_symbols_last_day(num_symbols=10):
     start_time = time.time()
     print(f"🔧 DEBUG: scan_symbols called")
@@ -417,6 +439,7 @@ def add_indicators(df):
 
     return df
 
+@sydney_time_logger
 def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
     signals = []
     df = add_indicators(df)
@@ -535,7 +558,7 @@ if __name__ == "__main__":
                 chart_path = plot_chart(df, sym)    
                 send_telegram_chart(chart_path, caption=f"{sym} Chart")
 
-                # Place sell order
+                # Place sell order 
                 place_order(sym, "sell", amount)
 
 

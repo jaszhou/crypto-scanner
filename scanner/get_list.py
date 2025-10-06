@@ -83,6 +83,7 @@ def get_balance(symbol):
     # print(bnb_balance)
     return balance
 
+
 def get_USDT_balance():
     balance = client.get_asset_balance(asset='USDT')
     balance = float(balance['free'])
