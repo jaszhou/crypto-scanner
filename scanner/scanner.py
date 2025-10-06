@@ -309,8 +309,82 @@ def get_top_usdt_symbols(limit=50):
     print(f"⏱️ get_top_usdt_symbols took {time.time() - start_time:.3f}s")
     return [s[0] for s in top_symbols]
 
+def get_top_market_cap_symbols_db():
+    """Fetch top 20 cryptocurrencies by market cap and save to database"""
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 20,
+            "page": 1
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
 
+        top_20 = [
+            {
+                'rank': coin['market_cap_rank'],
+                'symbol': coin['symbol'].upper(),
+                'name': coin['name'],
+                'price': coin['current_price'],
+                'market_cap': coin['market_cap'],
+                'volume': coin['total_volume']
+            }
+            for coin in data
+        ]
 
+        
+        # Save to database
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        for rank, item in enumerate(top_20, 1):
+            cur.execute("""
+                INSERT INTO market_caps (symbol, market_cap, rank)
+                VALUES (%s, %s, %s)
+            """, (item['symbol'], item['market_cap'], rank))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return [item['symbol'] for item in top_20]
+    except Exception as e:
+        print(f"❌ Failed to fetch market caps: {e}")
+        return []
+
+def get_top_market_cap_symbols():
+    """Fetch top 20 cryptocurrencies by market cap and save to database"""
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 20,
+            "page": 1
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        top_20 = [
+            {
+                'rank': coin['market_cap_rank'],
+                'symbol': coin['symbol'].upper(),
+                'name': coin['name'],
+                'price': coin['current_price'],
+                'market_cap': coin['market_cap'],
+                'volume': coin['total_volume']
+            }
+            for coin in data
+        ]
+        
+        exchange.load_markets()
+        usdt_pairs = [s for s in exchange.symbols if s.endswith("/USDT")]
+
+        return [f"{item['symbol']}/USDT" for item in top_20]
+    except Exception as e:
+        print(f"❌ Failed to fetch market caps: {e}")
+        return []
+    
 def get_ohlcv(symbol, timeframe='1d', limit=10):
     """Fetch OHLCV and return a pandas DataFrame."""
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -347,6 +421,8 @@ def scan_symbols_last_day(num_symbols=10):
     # SYMBOLS = fetch_binance_marketcap_top20(num_symbols)['symbol_pair'].tolist()
 
     SYMBOLS = get_top_usdt_symbols(num_symbols)
+
+    # SYMBOLS = get_top_market_cap_symbols()
 
 
     print(f"🔧 DEBUG: Top symbols by market cap: {SYMBOLS}")
