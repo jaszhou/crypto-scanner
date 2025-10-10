@@ -8,7 +8,7 @@ major_cryptos = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT", "XRPUSDT
 # Binance API endpoint (public, no auth required)
 BINANCE_URL = "https://api.binance.com/api/v3/klines"
 
-def get_crypto_data(symbol, interval="5m", limit=100):
+def get_crypto_data(symbol, interval="1d", limit=100):
     """Fetch OHLCV data from Binance"""
     url = f"{BINANCE_URL}?symbol={symbol}&interval={interval}&limit={limit}"
     data = requests.get(url).json()
@@ -36,13 +36,13 @@ def detect_buy_signal(df):
     """Buy if EMA20 > EMA50 and RSI < 70"""
     return (df["ema20"].iloc[-1] > df["ema50"].iloc[-1]) and (df["rsi"].iloc[-1] < 70)
 
-def get_market_indicator():
+def  get_market_indicator():
     while True:
         signals = {}
         bullish_count = 0
 
         for sym in major_cryptos:
-            df = get_crypto_data(sym)
+            df = get_crypto_data(sym, interval="1d")
             df = compute_indicators(df)
             last_price = df["close"].iloc[-1]
 
