@@ -429,8 +429,8 @@ def scan_symbols_last_day(num_symbols=10):
     alerts = []
 
 
-    timeframe = '1d'      # daily candles
-    limit = 30            # how many candles to fet
+    timeframe = '1h'      # hourly candles
+    limit = 30            # how many candles to fetch
 
     buy_signals_today = []
 
