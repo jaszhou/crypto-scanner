@@ -1,0 +1,34 @@
+name: vampi_docker
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: docker login
+      env:
+        DOCKER_USER: ${{secrets.DOCKER_USER}}
+        DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
+        DOCKER_PAT: ${{secrets.DOCKER_PAT}}
+        repository: jaszhou2020/trade:latest
+        tags: latest
+      run: |
+        docker login -u $DOCKER_USER -p $DOCKER_PAT
+        
+    - name: Build the Vampi Docker image
+      run: |
+        python3.12 -m pip install --upgrade setuptools
+        pip install -r requirements.txt
+        docker build . --file Dockerfile --tag jaszhou2020/trade:latest
+        
+    - name: List images
+      run: docker images    
+    - name: Docker Push
+      run: docker push ${{secrets.DOCKER_USER}}/trade:latest

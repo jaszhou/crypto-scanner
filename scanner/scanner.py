@@ -563,10 +563,10 @@ if __name__ == "__main__":
     print("=====================")
 
     last_future_update = 0
-    while get_USDT_balance() > TRADE_AMOUNT_USD:  # Ensure minimum balance to trade
+    while True:  # Ensure minimum balance to trade
 
         # buying condition
-        if has_open_coin() < TRADE_MAX:
+        if has_open_coin() < TRADE_MAX and get_USDT_balance() > TRADE_AMOUNT_USD:
 
             alerts = scan_symbols_last_day(NUM_SYMBOLS)
 
