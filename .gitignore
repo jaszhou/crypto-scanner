@@ -9,3 +9,4 @@ venv/
 scanner/venv/
 scanner/.env
 scanner/bot.md
+.env*
