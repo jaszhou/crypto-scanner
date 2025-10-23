@@ -50,6 +50,8 @@ services:
       - DB_NAME=crypto_db
       - DB_USER=crypto_user
       - DB_PASS=crypto_pass
+      - binance_api_key=${BINANCE_API_KEY}
+      - binance_api_secret=${BINANCE_API_SECRET}
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - CHAT_ID=${CHAT_ID}
       - THRESHOLD=3.0
