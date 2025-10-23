@@ -59,6 +59,6 @@ services:
       - THRESHOLD=3.0
     volumes:
       - ./scanner:/app
-    command: python scanner.py
+    command: python /app/scanner.py
 
 
