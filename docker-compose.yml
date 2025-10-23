@@ -10,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - e:\data\var\lib\postgresql\data:/var/lib/postgresql/data
+      - ${DATA_PATH}/postgresql/data:/var/lib/postgresql/data
 
   grafana:
     image: grafana/grafana:latest
@@ -23,7 +23,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - e:\data\var\lib\grafana:/var/lib/grafana
+      - ${DATA_PATH}/grafana:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
 
@@ -38,7 +38,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - e:\data\var\lib\pgadmin:/var/lib/pgadmin
+      - ${DATA_PATH}/pgadmin:/var/lib/pgadmin
 
   scanner:
     build: ./scanner
