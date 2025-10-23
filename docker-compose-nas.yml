@@ -8,9 +8,9 @@ services:
       POSTGRES_PASSWORD: crypto_pass
       POSTGRES_DB: crypto_db
     ports:
-      - "5432:5432"
+      - "6432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ${DATA_PATH}/postgresql/data:/var/lib/postgresql/data
 
   grafana:
     image: grafana/grafana:latest
@@ -18,13 +18,27 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: grafana-postgres-datasource
     ports:
-      - "3000:3000"
+      - "8000:3000"
     depends_on:
       - postgres
     volumes:
-      - grafana-storage:/var/lib/grafana
+      - ${DATA_PATH}/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: crypto_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - ${DATA_PATH}/pgadmin:/var/lib/pgadmin
 
   scanner:
     build: ./scanner
@@ -36,13 +50,11 @@ services:
       - DB_NAME=crypto_db
       - DB_USER=crypto_user
       - DB_PASS=crypto_pass
-      - TELEGRAM_TOKEN=YOUR_BOT_TOKEN
-      - CHAT_ID=YOUR_CHAT_ID
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - CHAT_ID=${CHAT_ID}
       - THRESHOLD=3.0
     volumes:
       - ./scanner:/app
     command: python scanner.py
 
-volumes:
-  pgdata:
-  grafana-storage:
+
