@@ -13,6 +13,8 @@ import functools
 from dotenv import load_dotenv
 from market import get_market_indicator
 from get_list import *
+import schedule
+
 load_dotenv()  # Loads .env file
 
 # ------------------ CONFIG ------------------
@@ -550,6 +552,25 @@ def check_exit_signals(df, entry_price, last_price, sym, amount, entry_time):
 
     return signals
 
+def health_check():
+    """
+    Send market indicators to Telegram every hour
+    Returns True if successful, False otherwise
+    """
+    try:
+        # Get market indicators
+        indicators = get_market_indicator()
+        
+        # Format message with timestamp
+        msg = f"🔄 Hourly Health Check - {sydney_time()}\n"
+        msg += f"Market Indicators:\n{indicators}"
+        
+        # Send to Telegram
+        send_telegram_text(msg)
+        return True
+    except Exception as e:
+        print(f"❌ Health check failed: {e}")
+        return False
 
 # ------------------ RUN LOOP ------------------
 if __name__ == "__main__":
@@ -563,7 +584,16 @@ if __name__ == "__main__":
     print("=====================")
 
     last_future_update = 0
+
+    # Run immediately on startup
+    health_check()
+    
+    # Schedule hourly runs
+    schedule.every().hour.do(health_check)
+
     while True:  # Ensure minimum balance to trade
+
+        schedule.run_pending()
 
         # buying condition
         if has_open_coin() < TRADE_MAX and get_USDT_balance() > TRADE_AMOUNT_USD:
