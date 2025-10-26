@@ -563,7 +563,7 @@ def health_check():
         
         # Format message with timestamp
         msg = f"🔄 Hourly Health Check - {sydney_time()}\n"
-        msg += f"Market Indicators:\n{indicators}"
+        msg += f"Market Indicators: {indicators}"
         msg += f"\nTRADING MODE: {TRADING_MODE}"
         msg += f"\nTRADING AMOUNT: {TRADE_AMOUNT_USD}"
         msg += f"\nTRAILING STOP PCT: {TRAILING_STOP_PCT}"
