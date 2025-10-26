@@ -50,12 +50,14 @@ services:
       - DB_NAME=crypto_db
       - DB_USER=crypto_user
       - DB_PASS=crypto_pass
+      - TELEGRAM_TOKEN=8478399942:AAEKQm_aWqKYjHvtTkUGMlfbH4y0BE_ONts
+      - CHAT_ID=6062530726
+      - BINANCE_API_KEY="jKXVVDPeg6EoA1SwDnzzT3DWpZf8s19qfoQ5nOuWYW0nQ8pIw3Fupirh78cO5PLb"
+      - BINANCE_SECRET_KEY="ZsYer2cPN0pxgw4yNjfu9rdFEoM8uh7xEoVYVVGXOkYqvsSaQch86nyIaR3ZKwi1"
       - binance_api_key=${BINANCE_API_KEY}
       - binance_api_secret=${BINANCE_API_SECRET}
       - binance_api=${binance_api}
       - binance_secret=${binance_secret}
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - CHAT_ID=${CHAT_ID}
       - THRESHOLD=3.0
     volumes:
       - ./scanner:/app
