@@ -55,6 +55,11 @@ services:
       - binance_api=${binance_api}
       - binance_secret=${binance_secret}
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TRADING_MODE=${TRADING_MODE}
+      - TRADE_AMOUNT_USD=${TRADE_AMOUNT_USD}
+      - TRADE_MAX=${TRADE_MAX}
+      - TRAILING_STOP_PCT=${TRAILING_STOP_PCT}
+      - PROFIT_TARGET_PCT=${PROFIT_TARGET_PCT}
       - CHAT_ID=${CHAT_ID}
       - THRESHOLD=3.0
     volumes:
