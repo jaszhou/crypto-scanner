@@ -15,7 +15,7 @@ from market import get_market_indicator
 from get_list import *
 import schedule
 
-load_dotenv()  # Loads .env file
+# load_dotenv()  # Loads .env file
 
 # ------------------ CONFIG ------------------
 DB_CONFIG = {
