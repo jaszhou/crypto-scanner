@@ -1,1 +1,3 @@
-sudo docker-compose -f crypto-scanner/docker-compose-nas.yml up
+#/volume1/docker/git/crypto-scanner
+
+docker-compose -f docker-compose-nas.yml up
