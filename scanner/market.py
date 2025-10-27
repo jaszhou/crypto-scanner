@@ -8,7 +8,7 @@ major_cryptos = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT", "XRPUSDT
 # Binance API endpoint (public, no auth required)
 BINANCE_URL = "https://api.binance.com/api/v3/klines"
 
-def get_crypto_data(symbol, interval="1d", limit=100):
+def get_crypto_data(symbol, interval="15m", limit=100):
     """Fetch OHLCV data from Binance"""
     url = f"{BINANCE_URL}?symbol={symbol}&interval={interval}&limit={limit}"
     data = requests.get(url).json()
@@ -42,7 +42,7 @@ def  get_market_indicator():
         bullish_count = 0
 
         for sym in major_cryptos:
-            df = get_crypto_data(sym, interval="1d")
+            df = get_crypto_data(sym, interval="15m")
             df = compute_indicators(df)
             last_price = df["close"].iloc[-1]
 
