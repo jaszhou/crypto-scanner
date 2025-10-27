@@ -42,7 +42,7 @@ def  get_market_indicator():
         bullish_count = 0
 
         for sym in major_cryptos:
-            df = get_crypto_data(sym, interval="15m")
+            df = get_crypto_data(sym, interval="1h", limit=100)
             df = compute_indicators(df)
             last_price = df["close"].iloc[-1]
 

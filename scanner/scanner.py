@@ -396,7 +396,7 @@ def get_ohlcv(symbol, timeframe='1d', limit=10):
     df.set_index('date', inplace=True)
     return df[['open','close','volume','high','low','timestamp']]
 
-def check_buy_signal(df):
+def check_buy_signal(symbol, df):
     """Add columns and return the last row with buy signal status."""
     df = df.copy()
     df['price_change'] = df['close'] - df['open']
@@ -410,10 +410,12 @@ def check_buy_signal(df):
     df['buy_signal'] = (
         (df['up']) &
         (df['prev_up']) &
-        (df['price_change_pct'] > 2.0) &
+        (df['price_change_pct'] > 1.0) &
         (df['volume_change'] > 0) & 
         (df['prev_volume_change'] > 0)
     )
+
+    print(f"🔍 {symbol} {df.index[-1]} Buy signal: {df['buy_signal'].iloc[-1]}, Price change %: {df['price_change_pct'].iloc[-1]:.2f}%, Volume change: {df['volume_change'].iloc[-1]:.2f}")
     return df
 
 @sydney_time_logger
@@ -445,7 +447,7 @@ def scan_symbols_last_day(num_symbols=10):
         # print(f"DEBUG: {sym} df.head(5):")
         # print(df.head(5))
 
-        df = check_buy_signal(df)
+        df = check_buy_signal(sym, df)
         if df['buy_signal'].iloc[-1]:
             buy_signals_today.append(sym)
             alerts.append((sym, df))
