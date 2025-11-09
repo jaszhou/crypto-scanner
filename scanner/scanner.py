@@ -407,10 +407,18 @@ def check_buy_signal(symbol, df):
     df['volume_change'] = df['volume'].pct_change()
     df['prev_volume_change'] = df['volume_change'].shift(1)
 
+    # df['buy_signal'] = (
+    #     (df['up']) &
+    #     (df['prev_up']) &
+    #     (df['price_change_pct'] > 1.0) &
+    #     (df['volume_change'] > 0) & 
+    #     (df['prev_volume_change'] > 0)
+    # )
+
     df['buy_signal'] = (
         (df['up']) &
         (df['prev_up']) &
-        (df['price_change_pct'] > 1.0) &
+        # (df['price_change_pct'] > 1.0) &
         (df['volume_change'] > 0) & 
         (df['prev_volume_change'] > 0)
     )
