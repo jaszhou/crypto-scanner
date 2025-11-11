@@ -141,7 +141,7 @@ def update_position_exit(symbol, exit_price):
 
 # Check open positions for exit rules
 @sydney_time_logger
-def get_open_positions():
+def  get_open_positions():
     start_time = time.time()
     print(f"🔧 DEBUG: get_open_positions called")
     try:
@@ -601,6 +601,8 @@ if __name__ == "__main__":
 
     # Run immediately on startup
     health_check()
+
+    print(f"Current USDT balance: {get_USDT_balance()}")
     
     # Schedule hourly runs
     schedule.every().hour.do(health_check)

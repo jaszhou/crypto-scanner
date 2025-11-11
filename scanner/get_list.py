@@ -8,8 +8,8 @@ from binance.enums import *
 from binance.exceptions import BinanceAPIException, BinanceOrderException
 
 
-api_key = os.environ.get('binance_api')
-api_secret = os.environ.get('binance_secret')
+api_key = os.environ.get('BINANCE_API_KEY')
+api_secret = os.environ.get('BINANCE_SECRET_KEY')
 
 
 client = Client(api_key, api_secret)
