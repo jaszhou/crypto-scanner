@@ -423,7 +423,7 @@ def check_buy_signal(symbol, df):
         (df['prev_volume_change'] > 0)
     )
 
-    print(f"🔍 {symbol} {df.index[-1]} Buy signal: {df['buy_signal'].iloc[-1]}, Price change %: {df['price_change_pct'].iloc[-1]:.2f}%, Volume change: {df['volume_change'].iloc[-1]:.2f}")
+    # print(f"🔍 {symbol} {df.index[-1]} Buy signal: {df['buy_signal'].iloc[-1]}, Price change %: {df['price_change_pct'].iloc[-1]:.2f}%, Volume change: {df['volume_change'].iloc[-1]:.2f}")
     return df
 
 @sydney_time_logger
@@ -635,7 +635,7 @@ if __name__ == "__main__":
                     # msg = f"📊 {sym} \n Buying..price: {close_price} open: {open}, close: {close_price}, change: {price_change:.2f}, up: {up}, prev_up: {prev_up}, volume: {volume:.2f}, vol_change: {volume_change:.2f}, prev_vol_change: {prev_volume_change:.2f}\n"
 
 
-                    print(df)
+                    # print(df)
                     chart_path = plot_chart(df, sym)
                     send_telegram_chart(chart_path, caption=f"{sym} Chart")
                 
