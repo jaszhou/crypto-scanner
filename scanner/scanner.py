@@ -581,6 +581,10 @@ def health_check():
         
         # Send to Telegram
         send_telegram_text(msg)
+
+        positions = get_open_positions()
+        send_telegram_text(f"📊 Open Positions:\n{positions}")
+
         return True
     except Exception as e:
         print(f"❌ Health check failed: {e}")
